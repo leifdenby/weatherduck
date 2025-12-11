@@ -1,0 +1,3 @@
+*.pyc
+uv.lock
+.python-version
