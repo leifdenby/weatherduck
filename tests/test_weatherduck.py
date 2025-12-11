@@ -40,7 +40,7 @@ def test_single_batch_forward():
 
     encoder = SingleNodesetEncoder(
         embed_src=make_mlp(n_input_data_features + n_input_trainable_features, hidden_dim, hidden_dim),
-        embed_dst=make_mlp(n_trainable_hidden_features, hidden_dim, hidden_dim),
+        embed_dst=make_mlp(n_hidden_data_features + n_trainable_hidden_features, hidden_dim, hidden_dim),
         message_op=SAGEConv((hidden_dim, hidden_dim), hidden_dim),
         post_linear=torch.nn.Linear(hidden_dim, hidden_dim),
     )
@@ -49,7 +49,9 @@ def test_single_batch_forward():
         hidden_dim=hidden_dim,
     )
     decoder = SingleNodesetDecoder(
-        embed_src=make_mlp(hidden_dim + n_trainable_hidden_features, hidden_dim, hidden_dim),
+        embed_src=make_mlp(
+            hidden_dim + n_hidden_data_features + n_trainable_hidden_features, hidden_dim, hidden_dim
+        ),
         embed_dst=make_mlp(n_input_data_features + n_input_trainable_features, hidden_dim, hidden_dim),
         message_op=SAGEConv((hidden_dim, hidden_dim), hidden_dim),
         out_linear=torch.nn.Linear(hidden_dim, n_output_data_features),
