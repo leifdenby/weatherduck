@@ -340,9 +340,31 @@ class EncodeProcessDecodeModel(nn.Module):
         Parameters
         ----------
         graph : HeteroData
-            Must contain node types {'data','hidden'} and edges
-            ('data','to','hidden'), ('hidden','to','hidden'),
-            ('hidden','to','data').
+            Must contain:
+            - node types: {'data', 'hidden'}
+                * graph['data'].x: [N_data, n_input_data_features]
+                    Initial state for forward predicition. E.g. two timesteps
+                    of initial state features, forcing features and static
+                    features all concatenated into "data features".
+                * graph['hidden'].x: [N_hidden, n_hidden_data_features]
+                    Hidden-node features. E.g. often positional/metadata. Can
+                    be zero-dim if no hidden attributes are provided.
+            - edge types: {('data','to','hidden'), ('hidden','to','hidden'), ('hidden','to','data')}
+                * graph[('data','to','hidden')].edge_index: [2, E_dh]
+                    adjecency list of edges from data -> hidden nodes, i.e. the encoder step.
+                * graph[('data','to','hidden')].edge_attr: [E_dh, edge_attr_dim] optional
+                    edge attributes for encoder edges, e.g. relative position of data->hidden nodes.
+                * graph[('hidden','to','hidden')].edge_index: [2, E_hh]
+                    adjecency list of edges from hidden -> hidden nodes, i.e. the processor step.
+                * graph[('hidden','to','hidden')].edge_attr: [E_hh, edge_attr_dim] optional
+                    edge attributes for processor edges, e.g. relative position of hidden->hidden nodes.
+                * graph[('hidden','to','data')].edge_index: [2, E_hd]
+                    adjecency list of edges from hidden -> data nodes, i.e. the decoder step.
+                * graph[('hidden','to','data')].edge_attr: [E_hd, edge_attr_dim] optional
+                    edge attributes for decoder edges, e.g. relative position of hidden->data nodes.
+
+            Batched graphs are treated as disconnected; trainable features are
+            repeated per-graph if batch multiples of the template node counts.
 
         Returns
         -------
