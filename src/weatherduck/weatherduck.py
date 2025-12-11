@@ -180,7 +180,7 @@ class SingleNodesetEncoder(nn.Module):
         return x_dst
 
 
-class WeatherProcessor(nn.Module):
+class Processor(nn.Module):
     """
     Single message-passing update on hidden->hidden edges with residual + norm.
 
@@ -263,7 +263,7 @@ class SingleNodesetDecoder(nn.Module):
         return self.out(x_dst)
 
 
-class WeatherEncProcDec(nn.Module):
+class EncodeProcessDecodeModel(nn.Module):
     """
     Encode -> process -> decode model for batched HeteroData graphs.
 
@@ -273,7 +273,7 @@ class WeatherEncProcDec(nn.Module):
         Template graph used for static attributes and topology validation.
     encoder : SingleNodesetEncoder
         Module mapping data nodes to hidden nodes.
-    processor : WeatherProcessor
+    processor : Processor
         Module updating hidden nodes via message passing.
     decoder : SingleNodesetDecoder
         Module mapping hidden nodes back to data nodes.
@@ -298,7 +298,7 @@ class WeatherEncProcDec(nn.Module):
         self,
         graph: HeteroData,
         encoder: SingleNodesetEncoder,
-        processor: WeatherProcessor,
+        processor: Processor,
         decoder: SingleNodesetDecoder,
         n_input_data_features: int = 8,
         n_output_data_features: int = 8,
@@ -414,7 +414,7 @@ class LitWeatherDuck(pl.LightningModule):
 
     Parameters
     ----------
-    model : WeatherEncProcDec
+    model : EncodeProcessDecodeModel
         Core GNN model to train/evaluate.
     lr : float, default 1e-3
         Learning rate for the Adam optimizer.
@@ -425,7 +425,7 @@ class LitWeatherDuck(pl.LightningModule):
         Model predictions on the provided HeteroData batch.
     """
 
-    def __init__(self, model: WeatherEncProcDec, lr: float = 1e-3):
+    def __init__(self, model: EncodeProcessDecodeModel, lr: float = 1e-3):
         super().__init__()
         self.save_hyperparameters(ignore=["model"])
         self.model = model
@@ -652,7 +652,7 @@ def experiment_factory() -> Experiment:
         message_op=SAGEConv((hidden_dim, hidden_dim), hidden_dim),
         post_linear=nn.Linear(hidden_dim, hidden_dim),
     )
-    processor = WeatherProcessor(
+    processor = Processor(
         message_op=SAGEConv((hidden_dim, hidden_dim), hidden_dim),
         hidden_dim=hidden_dim,
     )
@@ -665,7 +665,7 @@ def experiment_factory() -> Experiment:
         out_linear=nn.Linear(hidden_dim, n_output_data_features),
     )
 
-    core_model = WeatherEncProcDec(
+    core_model = EncodeProcessDecodeModel(
         graph=graph,
         encoder=encoder,
         processor=processor,

@@ -2,11 +2,11 @@ import torch
 from torch_geometric.nn import SAGEConv
 
 from weatherduck.weatherduck import (
+    EncodeProcessDecodeModel,
     SingleNodesetDecoder,
     SingleNodesetEncoder,
     WeatherDuckDataModule,
-    WeatherEncProcDec,
-    WeatherProcessor,
+    Processor,
     build_dummy_weather_graph,
     make_mlp,
 )
@@ -44,7 +44,7 @@ def test_single_batch_forward():
         message_op=SAGEConv((hidden_dim, hidden_dim), hidden_dim),
         post_linear=torch.nn.Linear(hidden_dim, hidden_dim),
     )
-    processor = WeatherProcessor(
+    processor = Processor(
         message_op=SAGEConv((hidden_dim, hidden_dim), hidden_dim),
         hidden_dim=hidden_dim,
     )
@@ -57,7 +57,7 @@ def test_single_batch_forward():
         out_linear=torch.nn.Linear(hidden_dim, n_output_data_features),
     )
 
-    model = WeatherEncProcDec(
+    model = EncodeProcessDecodeModel(
         graph=graph,
         encoder=encoder,
         processor=processor,
