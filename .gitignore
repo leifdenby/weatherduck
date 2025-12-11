@@ -1,3 +1,4 @@
 *.pyc
 uv.lock
 .python-version
+lightning_logs/

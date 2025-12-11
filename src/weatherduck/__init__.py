@@ -11,6 +11,7 @@ from .weatherduck import (
     experiment_factory,
     make_mlp,
 )
+from .main import main
 
 __all__ = [
     "EncodeProcessDecodeModel",

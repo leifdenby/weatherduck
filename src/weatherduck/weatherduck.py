@@ -104,10 +104,16 @@ class TrainableFeatures(nn.Module):
         self.register_parameter("trainable", param)
 
     def forward(self, current_num_nodes: int) -> torch.Tensor:
-        assert (
-            current_num_nodes == self.num_nodes
-        ), f"Trainable features expect {self.num_nodes} nodes, got {current_num_nodes}"
-        return self.trainable
+        # Supports batched HeteroData where num_nodes can be a multiple of the
+        # template node count. If so, repeat the trainable features per graph.
+        if current_num_nodes == self.num_nodes:
+            return self.trainable
+        if current_num_nodes % self.num_nodes == 0:
+            repeat = current_num_nodes // self.num_nodes
+            return self.trainable.repeat(repeat, 1)
+        raise AssertionError(
+            f"Trainable features expect {self.num_nodes} or a multiple thereof, got {current_num_nodes}"
+        )
 
 
 def run_message_op(
@@ -137,9 +143,9 @@ class SingleNodesetEncoder(nn.Module):
 
     Parameters
     ----------
-    embed_src : nn.Module
+    embedder_src : nn.Module
         MLP mapping source node features into latent space.
-    embed_dst : nn.Module
+    embedder_dst : nn.Module
         MLP mapping destination node features into latent space.
     message_op : MessagePassing
         PyG message passing layer (e.g., SAGEConv).
@@ -154,14 +160,14 @@ class SingleNodesetEncoder(nn.Module):
 
     def __init__(
         self,
-        embed_src: nn.Module,
-        embed_dst: nn.Module,
+        embedder_src: nn.Module,
+        embedder_dst: nn.Module,
         message_op: MessagePassing,
         post_linear: Optional[nn.Module] = None,
     ):
         super().__init__()
-        self.embed_src = embed_src
-        self.embed_dst = embed_dst
+        self.embedder_src = embedder_src
+        self.embedder_dst = embedder_dst
         self.message_op = message_op
         self.post = post_linear or nn.Identity()
         self.activation = nn.GELU()
@@ -173,8 +179,8 @@ class SingleNodesetEncoder(nn.Module):
         edge_index: torch.Tensor,
         edge_attr: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        x_src = self.activation(self.embed_src(x_src))
-        x_dst = self.activation(self.embed_dst(x_dst))
+        x_src = self.activation(self.embedder_src(x_src))
+        x_dst = self.activation(self.embedder_dst(x_dst))
         x_dst = run_message_op(self.message_op, (x_src, x_dst), edge_index, edge_attr)
         x_dst = self.activation(self.post(x_dst))
         return x_dst
@@ -221,9 +227,9 @@ class SingleNodesetDecoder(nn.Module):
 
     Parameters
     ----------
-    embed_src : nn.Module
+    embedder_src : nn.Module
         MLP mapping hidden node features to latent space.
-    embed_dst : nn.Module
+    embedder_dst : nn.Module
         MLP mapping data node features to latent space.
     message_op : MessagePassing
         PyG message passing layer for hidden-to-data edges.
@@ -238,14 +244,14 @@ class SingleNodesetDecoder(nn.Module):
 
     def __init__(
         self,
-        embed_src: nn.Module,
-        embed_dst: nn.Module,
+        embedder_src: nn.Module,
+        embedder_dst: nn.Module,
         message_op: MessagePassing,
         out_linear: nn.Module,
     ):
         super().__init__()
-        self.embed_src = embed_src
-        self.embed_dst = embed_dst
+        self.embedder_src = embedder_src
+        self.embedder_dst = embedder_dst
         self.message_op = message_op
         self.out = out_linear
         self.activation = nn.GELU()
@@ -257,8 +263,8 @@ class SingleNodesetDecoder(nn.Module):
         edge_index: torch.Tensor,
         edge_attr: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        x_src = self.activation(self.embed_src(x_src))
-        x_dst = self.activation(self.embed_dst(x_dst))
+        x_src = self.activation(self.embedder_src(x_src))
+        x_dst = self.activation(self.embedder_dst(x_dst))
         x_dst = self.activation(run_message_op(self.message_op, (x_src, x_dst), edge_index, edge_attr))
         return self.out(x_dst)
 
@@ -439,20 +445,20 @@ class LitWeatherDuck(pl.LightningModule):
         y = batch["data"].y
         y_hat = self(batch)
         loss = self.loss_fn(y_hat, y)
-        self.log("train_loss", loss)
+        self.log("train_loss", loss, batch_size=1)
         return loss
 
     def validation_step(self, batch: HeteroData, batch_idx: int) -> None:
         y = batch["data"].y
         y_hat = self(batch)
         loss = self.loss_fn(y_hat, y)
-        self.log("val_loss", loss, prog_bar=True)
+        self.log("val_loss", loss, prog_bar=True, batch_size=1)
 
     def test_step(self, batch: HeteroData, batch_idx: int) -> None:
         y = batch["data"].y
         y_hat = self(batch)
         loss = self.loss_fn(y_hat, y)
-        self.log("test_loss", loss, prog_bar=True)
+        self.log("test_loss", loss, prog_bar=True, batch_size=1)
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.lr)
@@ -647,8 +653,8 @@ def experiment_factory() -> Experiment:
     )
 
     encoder = SingleNodesetEncoder(
-        embed_src=make_mlp(n_input_data_features + n_input_trainable_features, hidden_dim, hidden_dim),
-        embed_dst=make_mlp(n_hidden_data_features + n_trainable_hidden_features, hidden_dim, hidden_dim),
+        embedder_src=make_mlp(n_input_data_features + n_input_trainable_features, hidden_dim, hidden_dim),
+        embedder_dst=make_mlp(n_hidden_data_features + n_trainable_hidden_features, hidden_dim, hidden_dim),
         message_op=SAGEConv((hidden_dim, hidden_dim), hidden_dim),
         post_linear=nn.Linear(hidden_dim, hidden_dim),
     )
@@ -657,10 +663,10 @@ def experiment_factory() -> Experiment:
         hidden_dim=hidden_dim,
     )
     decoder = SingleNodesetDecoder(
-        embed_src=make_mlp(
+        embedder_src=make_mlp(
             hidden_dim + n_hidden_data_features + n_trainable_hidden_features, hidden_dim, hidden_dim
         ),
-        embed_dst=make_mlp(n_input_data_features + n_input_trainable_features, hidden_dim, hidden_dim),
+        embedder_dst=make_mlp(n_input_data_features + n_input_trainable_features, hidden_dim, hidden_dim),
         message_op=SAGEConv((hidden_dim, hidden_dim), hidden_dim),
         out_linear=nn.Linear(hidden_dim, n_output_data_features),
     )
