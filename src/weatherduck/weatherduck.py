@@ -440,11 +440,14 @@ class EncodeProcessDecodeModel(nn.Module):
         assert required_edges.issubset(set(graph.edge_types)), f"Graph missing edges: {required_edges - set(graph.edge_types)}"
 
         data_feats = graph["data"].x
+        assert (
+            data_feats.shape[1] == self.n_input_data_features
+        ), f"Expected {self.n_input_data_features} data features, got {data_feats.shape[1]}"
 
         hidden_feats = graph["hidden"].x
-        # ensure hidden_feats includes hidden data features
-        if hidden_feats.shape[1] == 0 and self.n_hidden_data_features > 0:
-            hidden_feats = hidden_feats.new_zeros(graph["hidden"].num_nodes, self.n_hidden_data_features)
+        assert (
+            hidden_feats.shape[1] == self.n_hidden_data_features
+        ), f"Expected {self.n_hidden_data_features} hidden features, got {hidden_feats.shape[1]}"
 
         # build per-node trainable features using graph ids
         data_trainable = self.trainable_manager.build_features(graph, "data")
@@ -468,11 +471,6 @@ class EncodeProcessDecodeModel(nn.Module):
         )
 
         hidden_with_attrs = torch.cat([hidden_latent, graph["hidden"].x], dim=-1)
-        if graph["hidden"].x.shape[1] == 0 and self.n_hidden_data_features > 0:
-            hidden_with_attrs = torch.cat(
-                [hidden_with_attrs, hidden_with_attrs.new_zeros(graph["hidden"].num_nodes, self.n_hidden_data_features)],
-                dim=-1,
-            )
         if hidden_trainable is not None:
             hidden_with_attrs = torch.cat([hidden_with_attrs, hidden_trainable], dim=-1)
 

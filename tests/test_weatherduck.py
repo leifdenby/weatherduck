@@ -22,6 +22,7 @@ def test_single_batch_forward():
         num_data_nodes=16,
         n_input_data_features=n_input_data_features,
         n_output_data_features=n_output_data_features,
+        n_hidden_data_features=n_hidden_data_features,
         batch_size=2,
     )
     dm.setup("fit")
