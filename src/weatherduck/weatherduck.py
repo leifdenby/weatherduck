@@ -276,8 +276,6 @@ class EncodeProcessDecodeModel(nn.Module):
 
     Parameters
     ----------
-    graph : HeteroData
-        Template graph used for static attributes and topology validation.
     encoder : SingleNodesetEncoder
         Module mapping data nodes to hidden nodes.
     processor : Processor
@@ -303,7 +301,6 @@ class EncodeProcessDecodeModel(nn.Module):
 
     def __init__(
         self,
-        graph: HeteroData,
         encoder: SingleNodesetEncoder,
         processor: Processor,
         decoder: SingleNodesetDecoder,
@@ -314,7 +311,6 @@ class EncodeProcessDecodeModel(nn.Module):
         n_trainable_hidden_features: int = 0,
     ):
         super().__init__()
-        self.graph = graph
         self.encoder = encoder
         self.processor = processor
         self.decoder = decoder
@@ -342,6 +338,7 @@ class EncodeProcessDecodeModel(nn.Module):
                 * graph['hidden'].x: [N_hidden, n_hidden_data_features]
                     Hidden-node features. E.g. often positional/metadata. Can
                     be zero-dim if no hidden attributes are provided.
+                * graph.graph_id: [num_graphs] unique identifier per graph in the batch (used to scope trainable features).
             - edge types: {('data','to','hidden'), ('hidden','to','hidden'), ('hidden','to','data')}
                 * graph[('data','to','hidden')].edge_index: [2, E_dh]
                     adjecency list of edges from data -> hidden nodes, i.e. the encoder step.
@@ -549,12 +546,14 @@ class DummyWeatherDataset(Dataset):
     ----------
     num_samples : int
         Number of graphs to generate.
-    num_data_nodes : int
-        Number of data nodes per graph.
+    num_data_nodes : int | dict[int, int]
+        Number of data nodes per graph, or mapping graph_id -> node count.
     n_input_data_features : int
         Number of data input features (excluding trainable features).
     n_output_data_features : int
         Number of target channels.
+    n_unique_graphs : int, default 1
+        Number of unique graphs to cycle through when sampling.
 
     Returns
     -------
@@ -565,11 +564,11 @@ class DummyWeatherDataset(Dataset):
     def __init__(
         self,
         num_samples: int,
-        num_data_nodes: int,
+        num_data_nodes: int | dict[int, int],
         n_input_data_features: int,
         n_output_data_features: int,
         n_hidden_data_features: int,
-        n_unique_graphs: int = 2,
+        n_unique_graphs: int = 1,
     ):
         self.num_samples = num_samples
         self.num_data_nodes = num_data_nodes
@@ -579,9 +578,13 @@ class DummyWeatherDataset(Dataset):
         self.n_unique_graphs = n_unique_graphs
         self.graphs: list[HeteroData] = []
         for gid in range(n_unique_graphs):
+            if isinstance(self.num_data_nodes, dict):
+                num_nodes = self.num_data_nodes[gid]
+            else:
+                num_nodes = self.num_data_nodes
             g = build_dummy_weather_graph(
-                num_data_nodes=self.num_data_nodes,
-                num_hidden_nodes=max(1, self.num_data_nodes // 2),
+                num_data_nodes=num_nodes,
+                num_hidden_nodes=max(1, num_nodes // 2),
                 edge_attr_dim=2,
                 n_data_node_features=0,
                 n_hidden_node_features=self.n_hidden_data_features,
@@ -594,17 +597,88 @@ class DummyWeatherDataset(Dataset):
 
     def __getitem__(self, idx: int) -> HeteroData:
         graph = self.graphs[idx % self.n_unique_graphs].clone()
-        graph["data"].x = torch.randn(self.num_data_nodes, self.n_input_data_features)
+        # pick node count for this graph id
+        if isinstance(self.num_data_nodes, dict):
+            gid = int(graph.graph_id.item())
+            num_data_nodes = self.num_data_nodes.get(gid)
+            assert num_data_nodes is not None, f"num_data_nodes missing entry for graph id {gid}"
+        else:
+            num_data_nodes = self.num_data_nodes
+
+        graph["data"].x = torch.randn(num_data_nodes, self.n_input_data_features)
         if self.n_hidden_data_features > 0:
             graph["hidden"].x = torch.randn(graph["hidden"].num_nodes, self.n_hidden_data_features)
         else:
             graph["hidden"].x = torch.zeros(graph["hidden"].num_nodes, 0)
-        graph["data"].y = torch.randn(self.num_data_nodes, self.n_output_data_features)
+        graph["data"].y = torch.randn(num_data_nodes, self.n_output_data_features)
         return graph
 
     def collate_fn(self, graphs: list[HeteroData]) -> Batch:
         # Ensure each graph already has a unique graph_id; Batch will merge into a tensor
         return Batch.from_data_list(graphs)
+
+
+@fiddle.experimental.auto_config.auto_config
+def build_encode_process_decode_model(
+    *,
+    n_input_data_features: int,
+    n_output_data_features: int,
+    n_hidden_data_features: int,
+    n_input_trainable_features: int,
+    n_trainable_hidden_features: int,
+    hidden_dim: int,
+) -> EncodeProcessDecodeModel:
+    """
+    Factory to build an EncodeProcessDecodeModel with SAGEConv components.
+
+    Parameters
+    ----------
+    n_input_data_features : int
+        Dataset-provided data node features.
+    n_output_data_features : int
+        Decoder output channels.
+    n_hidden_data_features : int
+        Dataset-provided hidden node features.
+    n_input_trainable_features : int
+        Trainable feature length per data node.
+    n_trainable_hidden_features : int
+        Trainable feature length per hidden node.
+    hidden_dim : int
+        Latent dimension for encoder/processor/decoder.
+
+    Returns
+    -------
+    EncodeProcessDecodeModel
+    """
+    encoder = SingleNodesetEncoder(
+        embedder_src=make_mlp(n_input_data_features + n_input_trainable_features, hidden_dim, hidden_dim),
+        embedder_dst=make_mlp(n_hidden_data_features + n_trainable_hidden_features, hidden_dim, hidden_dim),
+        message_op=SAGEConv((hidden_dim, hidden_dim), hidden_dim),
+        post_linear=nn.Linear(hidden_dim, hidden_dim),
+    )
+    processor = Processor(
+        message_op=SAGEConv((hidden_dim, hidden_dim), hidden_dim),
+        hidden_dim=hidden_dim,
+    )
+    decoder = SingleNodesetDecoder(
+        embedder_src=make_mlp(
+            hidden_dim + n_hidden_data_features + n_trainable_hidden_features, hidden_dim, hidden_dim
+        ),
+        embedder_dst=make_mlp(n_input_data_features + n_input_trainable_features, hidden_dim, hidden_dim),
+        message_op=SAGEConv((hidden_dim, hidden_dim), hidden_dim),
+        out_linear=nn.Linear(hidden_dim, n_output_data_features),
+    )
+
+    return EncodeProcessDecodeModel(
+        encoder=encoder,
+        processor=processor,
+        decoder=decoder,
+        n_input_data_features=n_input_data_features,
+        n_output_data_features=n_output_data_features,
+        n_hidden_data_features=n_hidden_data_features,
+        n_input_trainable_features=n_input_trainable_features,
+        n_trainable_hidden_features=n_trainable_hidden_features,
+    )
 
 
 class WeatherDuckDataModule(pl.LightningDataModule):
@@ -616,7 +690,7 @@ class WeatherDuckDataModule(pl.LightningDataModule):
     num_samples : int, default 128
         Number of training samples.
     num_data_nodes : int, default 64
-        Number of data nodes per graph.
+        Number of data nodes per graph, or a dict mapping graph_id -> node count (len must equal n_unique_graphs).
     n_input_data_features : int, default 8
         Number of data input channels (excluding trainable features).
     n_output_data_features : int, default 8
@@ -635,11 +709,12 @@ class WeatherDuckDataModule(pl.LightningDataModule):
     def __init__(
         self,
         num_samples: int = 128,
-        num_data_nodes: int = 64,
+        num_data_nodes: int | dict[int, int] = 64,
         n_input_data_features: int = 8,
         n_output_data_features: int = 8,
         n_hidden_data_features: int = 0,
         batch_size: int = 4,
+        n_unique_graphs: int = 1,
     ):
         super().__init__()
         self.num_samples = num_samples
@@ -648,6 +723,7 @@ class WeatherDuckDataModule(pl.LightningDataModule):
         self.n_output_data_features = n_output_data_features
         self.n_hidden_data_features = n_hidden_data_features
         self.batch_size = batch_size
+        self.n_unique_graphs = n_unique_graphs
 
     def setup(self, stage: Optional[str] = None) -> None:
         self.train_ds = DummyWeatherDataset(
@@ -656,6 +732,7 @@ class WeatherDuckDataModule(pl.LightningDataModule):
             n_input_data_features=self.n_input_data_features,
             n_output_data_features=self.n_output_data_features,
             n_hidden_data_features=self.n_hidden_data_features,
+            n_unique_graphs=self.n_unique_graphs,
         )
         self.val_ds = DummyWeatherDataset(
             num_samples=max(8, self.num_samples // 10),
@@ -663,6 +740,7 @@ class WeatherDuckDataModule(pl.LightningDataModule):
             n_input_data_features=self.n_input_data_features,
             n_output_data_features=self.n_output_data_features,
             n_hidden_data_features=self.n_hidden_data_features,
+            n_unique_graphs=self.n_unique_graphs,
         )
         self.test_ds = DummyWeatherDataset(
             num_samples=max(8, self.num_samples // 10),
@@ -670,6 +748,7 @@ class WeatherDuckDataModule(pl.LightningDataModule):
             n_input_data_features=self.n_input_data_features,
             n_output_data_features=self.n_output_data_features,
             n_hidden_data_features=self.n_hidden_data_features,
+            n_unique_graphs=self.n_unique_graphs,
         )
 
     def train_dataloader(self) -> GeoDataLoader:
@@ -728,44 +807,13 @@ def experiment_factory() -> Experiment:
     n_hidden_data_features = 4
     n_input_trainable_features = 2
     n_trainable_hidden_features = 3
-
-    graph = build_dummy_weather_graph(
-        num_data_nodes=64,
-        num_hidden_nodes=32,
-        edge_attr_dim=2,
-        n_data_node_features=0,
-        n_hidden_node_features=n_hidden_data_features,
-    )
-
-    encoder = SingleNodesetEncoder(
-        embedder_src=make_mlp(n_input_data_features + n_input_trainable_features, hidden_dim, hidden_dim),
-        embedder_dst=make_mlp(n_hidden_data_features + n_trainable_hidden_features, hidden_dim, hidden_dim),
-        message_op=SAGEConv((hidden_dim, hidden_dim), hidden_dim),
-        post_linear=nn.Linear(hidden_dim, hidden_dim),
-    )
-    processor = Processor(
-        message_op=SAGEConv((hidden_dim, hidden_dim), hidden_dim),
-        hidden_dim=hidden_dim,
-    )
-    decoder = SingleNodesetDecoder(
-        embedder_src=make_mlp(
-            hidden_dim + n_hidden_data_features + n_trainable_hidden_features, hidden_dim, hidden_dim
-        ),
-        embedder_dst=make_mlp(n_input_data_features + n_input_trainable_features, hidden_dim, hidden_dim),
-        message_op=SAGEConv((hidden_dim, hidden_dim), hidden_dim),
-        out_linear=nn.Linear(hidden_dim, n_output_data_features),
-    )
-
-    core_model = EncodeProcessDecodeModel(
-        graph=graph,
-        encoder=encoder,
-        processor=processor,
-        decoder=decoder,
+    core_model = build_encode_process_decode_model(
         n_input_data_features=n_input_data_features,
         n_output_data_features=n_output_data_features,
         n_hidden_data_features=n_hidden_data_features,
         n_input_trainable_features=n_input_trainable_features,
         n_trainable_hidden_features=n_trainable_hidden_features,
+        hidden_dim=hidden_dim,
     )
 
     lit_module = LitWeatherDuck(
