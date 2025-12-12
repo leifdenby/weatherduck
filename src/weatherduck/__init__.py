@@ -6,6 +6,7 @@ from .weatherduck import (
     SingleNodesetDecoder,
     SingleNodesetEncoder,
     WeatherDuckDataModule,
+    build_encode_process_decode_model,
     Processor,
     build_dummy_weather_graph,
     experiment_factory,
@@ -21,8 +22,10 @@ __all__ = [
     "SingleNodesetDecoder",
     "SingleNodesetEncoder",
     "WeatherDuckDataModule",
+    "build_encode_process_decode_model",
     "Processor",
     "build_dummy_weather_graph",
     "experiment_factory",
     "make_mlp",
+    "main",
 ]
