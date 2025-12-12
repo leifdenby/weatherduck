@@ -1,4 +1,5 @@
 import inspect
+import itertools
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
@@ -9,7 +10,7 @@ import pytorch_lightning as pl
 import torch
 from torch import nn
 from torch.utils.data import Dataset
-from torch_geometric.data import HeteroData
+from torch_geometric.data import Batch, HeteroData
 from torch_geometric.loader import DataLoader as GeoDataLoader
 from torch_geometric.nn import MessagePassing, SAGEConv
 
@@ -322,16 +323,8 @@ class EncodeProcessDecodeModel(nn.Module):
         self.n_hidden_data_features = n_hidden_data_features
         self.n_input_trainable_features = n_input_trainable_features
         self.n_trainable_hidden_features = n_trainable_hidden_features
-        self.trainable_data_feats = (
-            TrainableFeatures(graph["data"].num_nodes, n_input_trainable_features)
-            if n_input_trainable_features > 0
-            else None
-        )
-        self.trainable_hidden_feats = (
-            TrainableFeatures(graph["hidden"].num_nodes, n_trainable_hidden_features)
-            if n_trainable_hidden_features > 0
-            else None
-        )
+        self.trainable_data_modules = nn.ModuleDict()
+        self.trainable_hidden_modules = nn.ModuleDict()
 
     def forward(self, graph: HeteroData) -> torch.Tensor:
         """
@@ -381,21 +374,62 @@ class EncodeProcessDecodeModel(nn.Module):
         assert required_edges.issubset(set(graph.edge_types)), f"Graph missing edges: {required_edges - set(graph.edge_types)}"
 
         data_feats = graph["data"].x
-        if self.trainable_data_feats is not None:
-            data_feats = torch.cat(
-                [data_feats, self.trainable_data_feats(graph["data"].num_nodes).to(data_feats.device)],
-                dim=-1,
-            )
 
         hidden_feats = graph["hidden"].x
         # ensure hidden_feats includes hidden data features
         if hidden_feats.shape[1] == 0 and self.n_hidden_data_features > 0:
             hidden_feats = hidden_feats.new_zeros(graph["hidden"].num_nodes, self.n_hidden_data_features)
-        if self.trainable_hidden_feats is not None:
-            hidden_feats = torch.cat(
-                [hidden_feats, self.trainable_hidden_feats(graph["hidden"].num_nodes).to(hidden_feats.device)],
-                dim=-1,
-            )
+
+        def _build_trainable(
+            module_dict: nn.ModuleDict,
+            graph_ids: torch.Tensor,
+            batch_vec: torch.Tensor,
+            feature_dim: int,
+            num_nodes_per_graph: torch.Tensor,
+        ) -> Optional[torch.Tensor]:
+            if feature_dim == 0:
+                return None
+            device = batch_vec.device
+            out = torch.zeros(batch_vec.numel(), feature_dim, device=device, dtype=torch.float32)
+            for graph_idx, gid in enumerate(graph_ids):
+                mask = batch_vec == graph_idx
+                count = int(num_nodes_per_graph[graph_idx].item())
+                key = str(int(gid.item()))
+                if key not in module_dict:
+                    module_dict[key] = TrainableFeatures(count, feature_dim)
+                feats = module_dict[key](count).to(device)
+                out[mask] = feats
+            return out
+
+        # build per-node trainable features using graph ids
+        num_graphs = graph.num_graphs if hasattr(graph, "num_graphs") else 1
+        graph_ids = (
+            graph.graph_id.to(data_feats.device)
+            if hasattr(graph, "graph_id")
+            else torch.arange(num_graphs, device=data_feats.device)
+        )
+        data_batch = graph["data"].batch if "batch" in graph["data"] else torch.zeros(data_feats.size(0), dtype=torch.long)
+        hidden_batch = graph["hidden"].batch if "batch" in graph["hidden"] else torch.zeros(hidden_feats.size(0), dtype=torch.long)
+        data_counts = torch.bincount(data_batch, minlength=num_graphs)
+        hidden_counts = torch.bincount(hidden_batch, minlength=num_graphs)
+        data_trainable = _build_trainable(
+            self.trainable_data_modules,
+            graph_ids,
+            data_batch.to(data_feats.device),
+            self.n_input_trainable_features,
+            data_counts,
+        )
+        hidden_trainable = _build_trainable(
+            self.trainable_hidden_modules,
+            graph_ids,
+            hidden_batch.to(hidden_feats.device),
+            self.n_trainable_hidden_features,
+            hidden_counts,
+        )
+        if data_trainable is not None:
+            data_feats = torch.cat([data_feats, data_trainable], dim=-1)
+        if hidden_trainable is not None:
+            hidden_feats = torch.cat([hidden_feats, hidden_trainable], dim=-1)
 
         hidden_latent = self.encoder(
             x_src=data_feats,
@@ -410,18 +444,14 @@ class EncodeProcessDecodeModel(nn.Module):
             edge_attr=graph["hidden", "to", "hidden"].edge_attr if "edge_attr" in graph["hidden", "to", "hidden"] else None,
         )
 
-        hidden_with_attrs = hidden_latent
-        hidden_with_attrs = torch.cat([hidden_with_attrs, graph["hidden"].x], dim=-1)
+        hidden_with_attrs = torch.cat([hidden_latent, graph["hidden"].x], dim=-1)
         if graph["hidden"].x.shape[1] == 0 and self.n_hidden_data_features > 0:
             hidden_with_attrs = torch.cat(
                 [hidden_with_attrs, hidden_with_attrs.new_zeros(graph["hidden"].num_nodes, self.n_hidden_data_features)],
                 dim=-1,
             )
-        if self.trainable_hidden_feats is not None:
-            hidden_with_attrs = torch.cat(
-                [hidden_with_attrs, self.trainable_hidden_feats(graph["hidden"].num_nodes).to(hidden_with_attrs.device)],
-                dim=-1,
-            )
+        if hidden_trainable is not None:
+            hidden_with_attrs = torch.cat([hidden_with_attrs, hidden_trainable], dim=-1)
 
         data_out = self.decoder(
             x_src=hidden_with_attrs,
@@ -522,6 +552,7 @@ class DummyWeatherDataset(Dataset):
         self.num_data_nodes = num_data_nodes
         self.n_input_data_features = n_input_data_features
         self.n_output_data_features = n_output_data_features
+        self._graph_id_counter = itertools.count()
         self.n_hidden_data_features = n_hidden_data_features
 
     def __len__(self) -> int:
@@ -535,6 +566,7 @@ class DummyWeatherDataset(Dataset):
             n_data_node_features=0,
             n_hidden_node_features=self.n_hidden_data_features,
         )
+        graph.graph_id = torch.tensor([next(self._graph_id_counter)], dtype=torch.long)
         graph["data"].x = torch.randn(self.num_data_nodes, self.n_input_data_features)
         if self.n_hidden_data_features > 0:
             graph["hidden"].x = torch.randn(graph["hidden"].num_nodes, self.n_hidden_data_features)
@@ -542,6 +574,10 @@ class DummyWeatherDataset(Dataset):
             graph["hidden"].x = torch.zeros(graph["hidden"].num_nodes, 0)
         graph["data"].y = torch.randn(self.num_data_nodes, self.n_output_data_features)
         return graph
+
+    def collate_fn(self, graphs: list[HeteroData]) -> Batch:
+        # Ensure each graph already has a unique graph_id; Batch will merge into a tensor
+        return Batch.from_data_list(graphs)
 
 
 class WeatherDuckDataModule(pl.LightningDataModule):
@@ -610,13 +646,13 @@ class WeatherDuckDataModule(pl.LightningDataModule):
         )
 
     def train_dataloader(self) -> GeoDataLoader:
-        return GeoDataLoader(self.train_ds, batch_size=self.batch_size, shuffle=True)
+        return GeoDataLoader(self.train_ds, batch_size=self.batch_size, shuffle=True, collate_fn=self.train_ds.collate_fn)
 
     def val_dataloader(self) -> GeoDataLoader:
-        return GeoDataLoader(self.val_ds, batch_size=self.batch_size)
+        return GeoDataLoader(self.val_ds, batch_size=self.batch_size, collate_fn=self.val_ds.collate_fn)
 
     def test_dataloader(self) -> GeoDataLoader:
-        return GeoDataLoader(self.test_ds, batch_size=self.batch_size)
+        return GeoDataLoader(self.test_ds, batch_size=self.batch_size, collate_fn=self.test_ds.collate_fn)
 
 
 # ============================================================

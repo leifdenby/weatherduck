@@ -25,7 +25,7 @@ def test_single_batch_forward():
         num_data_nodes=16,
         n_input_data_features=n_input_data_features,
         n_output_data_features=n_output_data_features,
-        batch_size=1,
+        batch_size=2,
     )
     dm.setup("fit")
     batch = next(iter(dm.train_dataloader()))
