@@ -438,6 +438,72 @@ class EncodeProcessDecodeModel(nn.Module):
 
         return data_out
 
+
+class AutoRegressiveForecaster(nn.Module):
+    """
+    Auto-regressive forecaster that rolls out multiple steps using a
+    step-wise predictor (EncodeProcessDecodeModel).
+
+    Parameters
+    ----------
+    step_predictor : EncodeProcessDecodeModel
+        Model used to predict a single step given current state + features.
+    ar_steps : int
+        Number of auto-regressive steps to roll out (T).
+
+    Expected graph data
+    -------------------
+    HeteroData with node type 'data' containing:
+      - x_init_states: [2, N, d_state]  # initial history (N = data nodes)
+      - x_target_states: [T, N, d_state]  # targets per step
+      - x_forcing: [T, N, d_forcing]
+      - x_static: [N, d_static]
+      - graph.graph_id: [num_graphs] unique ids for batching trainable features
+    Edges/types must satisfy step_predictor requirements (data->hidden, hidden->hidden, hidden->data).
+    
+    N: number of data nodes
+    T: number of auto-regressive steps
+    d_state: dimension of state features
+    d_forcing: dimension of forcing features
+    d_static: dimension of static features
+
+    Returns
+    -------
+    torch.Tensor
+        Predictions with shape [T, N, d_state_out].
+    """
+
+    def __init__(self, step_predictor: EncodeProcessDecodeModel, ar_steps: int):
+        super().__init__()
+        self.step_predictor = step_predictor
+        self.ar_steps = ar_steps
+
+    def forward(self, graph: HeteroData) -> torch.Tensor:
+        x_init = graph["data"].x_init_states  # [2, N, d_state]
+        x_targets = graph["data"].x_target_states  # [T, N, d_state]
+        x_forcing = graph["data"].x_forcing  # [T, N, d_forcing]
+        x_static = graph["data"].x_static  # [N, d_static]
+
+        ar_steps, num_nodes, d_state = x_targets.shape
+        assert ar_steps == self.ar_steps, f"Expected {self.ar_steps} steps, got {ar_steps}"
+
+        preds = []
+        prev_states = x_init  # keep 2-step history; here we just use last state
+
+        for t in range(ar_steps):
+            current_state = prev_states[-1]  # [N, d_state]
+            data_feats = torch.cat([current_state, x_forcing[t], x_static], dim=-1)
+
+            step_graph = graph.clone()
+            step_graph["data"].x = data_feats
+
+            pred = self.step_predictor(step_graph)  # [N, d_state_out]
+            preds.append(pred)
+
+            prev_states = torch.cat([prev_states[1:], pred.unsqueeze(0)], dim=0)
+
+        return torch.stack(preds, dim=0)
+
     @staticmethod
     def _build_trainable_features(
         module_dict: nn.ModuleDict,

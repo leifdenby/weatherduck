@@ -2,6 +2,7 @@ from .weatherduck import (
     EncodeProcessDecodeModel,
     Experiment,
     LitWeatherDuck,
+    AutoRegressiveForecaster,
     TrainableFeatures,
     SingleNodesetDecoder,
     SingleNodesetEncoder,
@@ -10,6 +11,7 @@ from .weatherduck import (
     Processor,
     build_dummy_weather_graph,
     experiment_factory,
+    autoregressive_experiment_factory,
     make_mlp,
 )
 from .main import main
@@ -18,6 +20,7 @@ __all__ = [
     "EncodeProcessDecodeModel",
     "Experiment",
     "LitWeatherDuck",
+    "AutoRegressiveForecaster",
     "TrainableFeatures",
     "SingleNodesetDecoder",
     "SingleNodesetEncoder",
@@ -27,5 +30,6 @@ __all__ = [
     "build_dummy_weather_graph",
     "experiment_factory",
     "make_mlp",
+    "autoregressive_experiment_factory",
     "main",
 ]
