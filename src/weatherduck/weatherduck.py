@@ -1060,3 +1060,61 @@ def experiment_factory() -> Experiment:
         data=data,
         trainer=trainer,
     )
+
+
+@fiddle.experimental.auto_config.auto_config
+def autoregressive_experiment_factory() -> Experiment:
+    """
+    Build a Fiddle config graph for the autoregressive forecaster with
+    timeseries dummy data.
+    """
+    ar_steps = 3
+    n_state_features = 6
+    n_output_data_features = 6
+    n_hidden_data_features = 3
+    n_input_trainable_features = 2
+    n_trainable_hidden_features = 2
+    hidden_dim = 128
+
+    step_model = build_encode_process_decode_model(
+        n_input_data_features=n_state_features + n_hidden_data_features + n_input_trainable_features,
+        n_output_data_features=n_output_data_features,
+        n_hidden_data_features=n_hidden_data_features,
+        n_input_trainable_features=0,
+        n_trainable_hidden_features=n_trainable_hidden_features,
+        hidden_dim=hidden_dim,
+    )
+
+    ar_model = AutoRegressiveForecaster(
+        step_predictor=step_model,
+        ar_steps=ar_steps,
+    )
+
+    lit_module = LitWeatherDuck(
+        model=ar_model,
+        lr=1e-3,
+    )
+
+    data = TimeseriesWeatherDataModule(
+        num_samples=256,
+        num_data_nodes=64,
+        n_state_features=n_state_features,
+        n_forcing_features=2,
+        n_static_features=1,
+        ar_steps=ar_steps,
+        n_hidden_data_features=n_hidden_data_features,
+        batch_size=4,
+        n_unique_graphs=2,
+    )
+
+    trainer = pl.Trainer(
+        max_epochs=2,
+        accelerator="auto",
+        devices=1,
+    )
+
+    return Experiment(
+        model=lit_module,
+        data=data,
+        trainer=trainer,
+    )
