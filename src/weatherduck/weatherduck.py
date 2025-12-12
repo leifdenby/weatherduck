@@ -495,8 +495,6 @@ class AutoRegressiveForecaster(nn.Module):
     ----------
     step_predictor : EncodeProcessDecodeModel
         Model used to predict a single step given current state + features.
-    ar_steps : int
-        Number of auto-regressive steps to roll out (T).
 
     Expected graph data
     -------------------
@@ -505,7 +503,6 @@ class AutoRegressiveForecaster(nn.Module):
       - x_target_states: [N, d_state, T]  # targets per step (T = ar steps)
       - x_forcing: [N, d_forcing, T]
       - x_static: [N, d_static]
-      - graph.graph_id: [num_graphs] unique ids for batching trainable features
     Edges/types must satisfy step_predictor requirements (data->hidden, hidden->hidden, hidden->data).
     
     N: number of data nodes
@@ -523,12 +520,9 @@ class AutoRegressiveForecaster(nn.Module):
     def __init__(
         self,
         step_predictor: EncodeProcessDecodeModel,
-        trainable_manager: Optional[TrainableFeatureManager] = None,
     ):
         super().__init__()
-        self.trainable_manager = trainable_manager or step_predictor.trainable_manager
         self.step_predictor = step_predictor
-        self.step_predictor.trainable_manager = self.trainable_manager
 
     def forward(self, graph: HeteroData) -> torch.Tensor:
         """
@@ -542,8 +536,7 @@ class AutoRegressiveForecaster(nn.Module):
               - x_target_states: [T, N, d_state] targets per step
               - x_forcing: [T, N, d_forcing]
               - x_static: [N, d_static]
-            And graph.graph_id for trainable feature scoping; edge structure must
-            satisfy the step_predictor requirements.
+            Edge structure must satisfy the step_predictor requirements.
 
         Returns
         -------
@@ -579,49 +572,6 @@ class AutoRegressiveForecaster(nn.Module):
             prev_states = torch.cat([prev_states[:, :, 1:], pred.unsqueeze(-1)], dim=2)
 
         return torch.stack(preds, dim=2)
-
-    @staticmethod
-    def _build_trainable_features(
-        module_dict: nn.ModuleDict,
-        graph_ids: torch.Tensor,
-        batch_vec: torch.Tensor,
-        feature_dim: int,
-        num_nodes_per_graph: torch.Tensor,
-    ) -> Optional[torch.Tensor]:
-        """
-        Construct per-node trainable features for a batched graph using per-graph ids.
-
-        Parameters
-        ----------
-        module_dict : nn.ModuleDict
-            Storage for TrainableFeatures modules keyed by graph id.
-        graph_ids : torch.Tensor
-            Unique identifier per graph in the batch, shape [num_graphs].
-        batch_vec : torch.Tensor
-            Batch vector for nodes (data or hidden), shape [num_nodes].
-        feature_dim : int
-            Feature dimension to allocate per node.
-        num_nodes_per_graph : torch.Tensor
-            Node counts per graph, shape [num_graphs].
-
-        Returns
-        -------
-        torch.Tensor | None
-            Trainable feature tensor aligned with nodes or None if feature_dim == 0.
-        """
-        if feature_dim == 0:
-            return None
-        device = batch_vec.device
-        out = torch.zeros(batch_vec.numel(), feature_dim, device=device, dtype=torch.float32)
-        for graph_idx, gid in enumerate(graph_ids):
-            mask = batch_vec == graph_idx
-            count = int(num_nodes_per_graph[graph_idx].item())
-            key = str(int(gid.item()))
-            if key not in module_dict:
-                module_dict[key] = TrainableFeatures(count, feature_dim)
-            feats = module_dict[key](count).to(device)
-            out[mask] = feats
-        return out
 
 
 # ============================================================
@@ -922,7 +872,6 @@ def build_encode_process_decode_model(
     n_input_trainable_features: int,
     n_hidden_trainable_features: int,
     hidden_dim: int,
-    trainable_manager: Optional[TrainableFeatureManager] = None,
 ) -> EncodeProcessDecodeModel:
     """
     Factory to build an EncodeProcessDecodeModel with SAGEConv components.
@@ -965,7 +914,7 @@ def build_encode_process_decode_model(
         out_linear=nn.Linear(hidden_dim, n_output_data_features),
     )
 
-    manager = trainable_manager or TrainableFeatureManager(
+    trainable_manager = TrainableFeatureManager(
         n_input_trainable_features, n_hidden_trainable_features
     )
 
@@ -978,7 +927,7 @@ def build_encode_process_decode_model(
         n_hidden_data_features=n_hidden_data_features,
         n_input_trainable_features=n_input_trainable_features,
         n_hidden_trainable_features=n_hidden_trainable_features,
-        trainable_manager=manager,
+        trainable_manager=trainable_manager,
     )
 
 
