@@ -44,11 +44,25 @@ This uses dummy graphs/data and should execute end-to-end on CPU or MPS.
 - `n_output_data_features`: decoder output channels on data nodes.
 
 ## Graph expectations
-The model consumes PyG `HeteroData` with node types `{'data', 'hidden'}` and edges:
-- `('data','to','hidden')`: encoder edges
-- `('hidden','to','hidden')`: processor edges
-- `('hidden','to','data')`: decoder edges
-Edge attributes are optional; trainable features are repeated per graph when batches are stacked.
+`EncodeProcessDecodeModel`:
+- Node types: `{'data', 'hidden'}` with
+  - `graph['data'].x`: `[N_data, n_input_data_features]`
+  - `graph['hidden'].x`: `[N_hidden, n_hidden_data_features]`
+- Edge types:
+  - `('data','to','hidden')` with `edge_index` `[2, E_dh]` (optional `edge_attr`)
+  - `('hidden','to','hidden')` with `edge_index` `[2, E_hh]` (optional `edge_attr`)
+  - `('hidden','to','data')` with `edge_index` `[2, E_hd]` (optional `edge_attr`)
+- Trainable features (if enabled) are added per graph and concatenated to the corresponding node features.
+
+`AutoRegressiveForecaster` (wraps e.g. an `EncodeProcessDecodeModel` for one-step prediction)
+- Node type: `{'data'}` features:
+  - `x_init_states`: `[N, d_state, 2]` initial history (latest state in the last slot)
+  - `x_target_states`: `[N, d_state, T]` autoregressive targets
+  - `x_forcing`: `[N, d_forcing, T]`
+  - `x_static`: `[N, d_static]`
+- Shares the same edge/node structure required by the underlying EncodeProcessDecodeModel (data/hidden node types and the three edge sets above). From `x_init_states`, `x_forcing` and `x_static` the model constructs `graph["data"].x` for each step to pass down to the provided `step_predictor` (e.g. an EncodeProcessDecodeModel).
+
+Shapes follow the convention: first dim = nodes, last dim = time (for sequences), this is required because PyG data-loader batches graphs along the first dimension.
 
 ## Running tests
 ```bash
