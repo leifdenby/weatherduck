@@ -3,6 +3,7 @@ from torch_geometric.nn import SAGEConv
 
 from weatherduck.weatherduck import (
     AutoRegressiveForecaster,
+    TrainableFeatureManager,
     TimeseriesWeatherDataModule,
     build_encode_process_decode_model,
 )
@@ -32,6 +33,10 @@ def test_autoregressive_forecaster_runs():
     batch = next(iter(dm.train_dataloader()))
 
     # step model: input = current state + forcing + static; we fold forcing/static dims into input_data_features here
+    manager = TrainableFeatureManager(
+        n_input_trainable_features=0,
+        n_trainable_hidden_features=n_trainable_hidden_features,
+    )
     step_model = build_encode_process_decode_model(
         n_input_data_features=n_state_features + 2 + 1 + n_input_trainable_features,
         n_output_data_features=n_output_features,
@@ -39,11 +44,12 @@ def test_autoregressive_forecaster_runs():
         n_input_trainable_features=0,
         n_trainable_hidden_features=n_trainable_hidden_features,
         hidden_dim=hidden_dim,
+        trainable_manager=manager,
     )
 
     ar_model = AutoRegressiveForecaster(
         step_predictor=step_model,
-        ar_steps=ar_steps,
+        trainable_manager=manager,
     )
 
     ar_model.eval()
