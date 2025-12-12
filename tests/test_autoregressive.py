@@ -38,10 +38,10 @@ def test_autoregressive_forecaster_runs():
         n_trainable_hidden_features=n_trainable_hidden_features,
     )
     step_model = build_encode_process_decode_model(
-        n_input_data_features=n_state_features + 2 + 1 + n_input_trainable_features,
+        n_input_data_features=n_state_features + 2 + 1,  # state + forcing + static
         n_output_data_features=n_output_features,
         n_hidden_data_features=n_hidden_data_features,
-        n_input_trainable_features=0,
+        n_input_trainable_features=n_input_trainable_features,
         n_trainable_hidden_features=n_trainable_hidden_features,
         hidden_dim=hidden_dim,
         trainable_manager=manager,

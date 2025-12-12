@@ -501,9 +501,9 @@ class AutoRegressiveForecaster(nn.Module):
     Expected graph data
     -------------------
     HeteroData with node type 'data' containing:
-      - x_init_states: [2, N, d_state]  # initial history (N = data nodes)
-      - x_target_states: [T, N, d_state]  # targets per step
-      - x_forcing: [T, N, d_forcing]
+      - x_init_states: [N, d_state, 2]  # initial history (N = data nodes)
+      - x_target_states: [N, d_state, T]  # targets per step (T = ar steps)
+      - x_forcing: [N, d_forcing, T]
       - x_static: [N, d_static]
       - graph.graph_id: [num_graphs] unique ids for batching trainable features
     Edges/types must satisfy step_predictor requirements (data->hidden, hidden->hidden, hidden->data).
@@ -550,27 +550,25 @@ class AutoRegressiveForecaster(nn.Module):
         torch.Tensor
             Predicted states of shape [T, N, d_state_out].
         """
-        x_init = graph["data"].x_init_states  # [2, N, d_state]
-        x_targets = graph["data"].x_target_states  # [T, N, d_state]
-        x_forcing = graph["data"].x_forcing  # [T, N, d_forcing]
+        x_init = graph["data"].x_init_states  # [N, d_state, 2]
+        x_targets = graph["data"].x_target_states  # [N, d_state, T]
+        x_forcing = graph["data"].x_forcing  # [N, d_forcing, T]
         x_static = graph["data"].x_static  # [N, d_static]
 
-        T, N, d_state = x_targets.shape
-        d_forcing = x_forcing.shape[2]
+        N, d_state, T = x_targets.shape
+        d_forcing = x_forcing.shape[1]
         d_static = x_static.shape[1]
 
-        assert x_init.shape == (2, N, d_state)
-        assert x_forcing.shape[0] == T and x_forcing.shape[1] == N
-        assert x_static.shape[0] == N
-        assert x_forcing.shape[2] == d_forcing
-        assert x_static.shape[1] == d_static
+        assert x_init.shape == (N, d_state, 2)
+        assert x_forcing.shape == (N, d_forcing, T)
+        assert x_static.shape == (N, d_static)
 
         preds = []
         prev_states = x_init  # keep 2-step history; here we just use last state
 
         for t in range(T):
-            current_state = prev_states[-1]  # [N, d_state]
-            data_feats = torch.cat([current_state, x_forcing[t], x_static], dim=-1)
+            current_state = prev_states[:, :, -1]  # [N, d_state]
+            data_feats = torch.cat([current_state, x_forcing[:, :, t], x_static], dim=-1)  # [N, d_state+d_forcing+d_static]
 
             step_graph = graph.clone()
             step_graph["data"].x = data_feats
@@ -578,7 +576,7 @@ class AutoRegressiveForecaster(nn.Module):
             pred = self.step_predictor(step_graph)  # [N, d_state_out]
             preds.append(pred)
 
-            prev_states = torch.cat([prev_states[1:], pred.unsqueeze(0)], dim=0)
+            prev_states = torch.cat([prev_states[:, :, 1:], pred.unsqueeze(-1)], dim=2)
 
         return torch.stack(preds, dim=0)
 
@@ -828,12 +826,12 @@ class TimeseriesDummyWeatherDataset(Dataset):
         gid = int(graph.graph_id.item())
         num_nodes = self.num_data_nodes[gid] if isinstance(self.num_data_nodes, dict) else self.num_data_nodes
 
-        graph["data"].x_init_states = torch.randn(2, num_nodes, self.n_state_features)
-        graph["data"].x_target_states = torch.randn(self.ar_steps, num_nodes, self.n_state_features)
-        graph["data"].x_forcing = torch.randn(self.ar_steps, num_nodes, self.n_forcing_features)
+        graph["data"].x_init_states = torch.randn(num_nodes, self.n_state_features, 2)
+        graph["data"].x_target_states = torch.randn(num_nodes, self.n_state_features, self.ar_steps)
+        graph["data"].x_forcing = torch.randn(num_nodes, self.n_forcing_features, self.ar_steps)
         graph["data"].x_static = torch.randn(num_nodes, self.n_static_features)
-        graph["data"].x = graph["data"].x_init_states[-1]
-        graph["data"].y = graph["data"].x_target_states
+        graph["data"].x = graph["data"].x_init_states[:, :, -1]
+        graph["data"].y = graph["data"].x_target_states  # [N, d_state, T]
 
         if self.n_hidden_data_features > 0:
             graph["hidden"].x = torch.randn(graph["hidden"].num_nodes, self.n_hidden_data_features)
@@ -1158,13 +1156,15 @@ def autoregressive_experiment_factory() -> Experiment:
     n_hidden_data_features = 3
     n_input_trainable_features = 2
     n_trainable_hidden_features = 2
+    n_forcing_features = 2
+    n_static_features = 1
     hidden_dim = 128
 
     step_model = build_encode_process_decode_model(
-        n_input_data_features=n_state_features + n_hidden_data_features + n_input_trainable_features,
+        n_input_data_features=n_state_features + n_forcing_features + n_static_features,  # state + forcing + static
         n_output_data_features=n_output_data_features,
         n_hidden_data_features=n_hidden_data_features,
-        n_input_trainable_features=0,
+        n_input_trainable_features=n_input_trainable_features,
         n_trainable_hidden_features=n_trainable_hidden_features,
         hidden_dim=hidden_dim,
     )
@@ -1182,8 +1182,8 @@ def autoregressive_experiment_factory() -> Experiment:
         num_samples=256,
         num_data_nodes=64,
         n_state_features=n_state_features,
-        n_forcing_features=2,
-        n_static_features=1,
+        n_forcing_features=n_forcing_features,
+        n_static_features=n_static_features,
         ar_steps=ar_steps,
         n_hidden_data_features=n_hidden_data_features,
         batch_size=4,
