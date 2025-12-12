@@ -684,6 +684,159 @@ class DummyWeatherDataset(Dataset):
         return Batch.from_data_list(graphs)
 
 
+class TimeseriesDummyWeatherDataset(Dataset):
+    """
+    Dummy dataset producing HeteroData with timeseries splits for the
+    AutoRegressiveForecaster.
+
+    Parameters
+    ----------
+    num_samples : int
+        Number of graphs to generate.
+    num_data_nodes : int | dict[int, int]
+        Number of data nodes per graph, or mapping graph_id -> node count.
+    n_state_features : int
+        Dimension of state features (init/target).
+    n_forcing_features : int
+        Dimension of forcing features.
+    n_static_features : int
+        Dimension of static features.
+    ar_steps : int
+        Number of autoregressive steps (T).
+    n_hidden_data_features : int
+        Hidden node feature dimension.
+    n_unique_graphs : int, default 1
+        Number of unique graphs to cycle through.
+    """
+
+    def __init__(
+        self,
+        num_samples: int,
+        num_data_nodes: int | dict[int, int],
+        n_state_features: int,
+        n_forcing_features: int,
+        n_static_features: int,
+        ar_steps: int,
+        n_hidden_data_features: int,
+        n_unique_graphs: int = 1,
+    ):
+        self.num_samples = num_samples
+        self.num_data_nodes = num_data_nodes
+        self.n_state_features = n_state_features
+        self.n_forcing_features = n_forcing_features
+        self.n_static_features = n_static_features
+        self.ar_steps = ar_steps
+        self.n_hidden_data_features = n_hidden_data_features
+        self.n_unique_graphs = n_unique_graphs
+
+        self.graphs: list[HeteroData] = []
+        for gid in range(n_unique_graphs):
+            num_nodes = num_data_nodes[gid] if isinstance(num_data_nodes, dict) else num_data_nodes
+            g = build_dummy_weather_graph(
+                num_data_nodes=num_nodes,
+                num_hidden_nodes=max(1, num_nodes // 2),
+                edge_attr_dim=2,
+                n_data_node_features=0,
+                n_hidden_node_features=self.n_hidden_data_features,
+            )
+            g.graph_id = torch.tensor([gid], dtype=torch.long)
+            self.graphs.append(g)
+
+    def __len__(self) -> int:
+        return self.num_samples
+
+    def __getitem__(self, idx: int) -> HeteroData:
+        graph = self.graphs[idx % self.n_unique_graphs].clone()
+        gid = int(graph.graph_id.item())
+        num_nodes = self.num_data_nodes[gid] if isinstance(self.num_data_nodes, dict) else self.num_data_nodes
+
+        graph["data"].x_init_states = torch.randn(2, num_nodes, self.n_state_features)
+        graph["data"].x_target_states = torch.randn(self.ar_steps, num_nodes, self.n_state_features)
+        graph["data"].x_forcing = torch.randn(self.ar_steps, num_nodes, self.n_forcing_features)
+        graph["data"].x_static = torch.randn(num_nodes, self.n_static_features)
+        graph["data"].x = graph["data"].x_init_states[-1]
+        graph["data"].y = graph["data"].x_target_states
+
+        if self.n_hidden_data_features > 0:
+            graph["hidden"].x = torch.randn(graph["hidden"].num_nodes, self.n_hidden_data_features)
+        else:
+            graph["hidden"].x = torch.zeros(graph["hidden"].num_nodes, 0)
+        return graph
+
+    def collate_fn(self, graphs: list[HeteroData]) -> Batch:
+        return Batch.from_data_list(graphs)
+
+
+class TimeseriesWeatherDataModule(pl.LightningDataModule):
+    """
+    DataModule for timeseries dummy data compatible with AutoRegressiveForecaster.
+    """
+
+    def __init__(
+        self,
+        num_samples: int = 128,
+        num_data_nodes: int | dict[int, int] = 64,
+        n_state_features: int = 4,
+        n_forcing_features: int = 2,
+        n_static_features: int = 1,
+        ar_steps: int = 3,
+        n_hidden_data_features: int = 0,
+        batch_size: int = 4,
+        n_unique_graphs: int = 1,
+    ):
+        super().__init__()
+        self.num_samples = num_samples
+        self.num_data_nodes = num_data_nodes
+        self.n_state_features = n_state_features
+        self.n_forcing_features = n_forcing_features
+        self.n_static_features = n_static_features
+        self.ar_steps = ar_steps
+        self.n_hidden_data_features = n_hidden_data_features
+        self.batch_size = batch_size
+        self.n_unique_graphs = n_unique_graphs
+
+    def setup(self, stage: Optional[str] = None) -> None:
+        self.train_ds = TimeseriesDummyWeatherDataset(
+            num_samples=self.num_samples,
+            num_data_nodes=self.num_data_nodes,
+            n_state_features=self.n_state_features,
+            n_forcing_features=self.n_forcing_features,
+            n_static_features=self.n_static_features,
+            ar_steps=self.ar_steps,
+            n_hidden_data_features=self.n_hidden_data_features,
+            n_unique_graphs=self.n_unique_graphs,
+        )
+        self.val_ds = TimeseriesDummyWeatherDataset(
+            num_samples=max(8, self.num_samples // 10),
+            num_data_nodes=self.num_data_nodes,
+            n_state_features=self.n_state_features,
+            n_forcing_features=self.n_forcing_features,
+            n_static_features=self.n_static_features,
+            ar_steps=self.ar_steps,
+            n_hidden_data_features=self.n_hidden_data_features,
+            n_unique_graphs=self.n_unique_graphs,
+        )
+        self.test_ds = TimeseriesDummyWeatherDataset(
+            num_samples=max(8, self.num_samples // 10),
+            num_data_nodes=self.num_data_nodes,
+            n_state_features=self.n_state_features,
+            n_forcing_features=self.n_forcing_features,
+            n_static_features=self.n_static_features,
+            ar_steps=self.ar_steps,
+            n_hidden_data_features=self.n_hidden_data_features,
+            n_unique_graphs=self.n_unique_graphs,
+        )
+
+    def train_dataloader(self) -> GeoDataLoader:
+        return GeoDataLoader(self.train_ds, batch_size=self.batch_size, shuffle=True, collate_fn=self.train_ds.collate_fn)
+
+    def val_dataloader(self) -> GeoDataLoader:
+        return GeoDataLoader(self.val_ds, batch_size=self.batch_size, collate_fn=self.val_ds.collate_fn)
+
+    def test_dataloader(self) -> GeoDataLoader:
+        return GeoDataLoader(self.test_ds, batch_size=self.batch_size, collate_fn=self.test_ds.collate_fn)
+
+
 @fiddle.experimental.auto_config.auto_config
 def build_encode_process_decode_model(
     *,
