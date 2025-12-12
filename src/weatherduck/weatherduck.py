@@ -380,27 +380,6 @@ class EncodeProcessDecodeModel(nn.Module):
         if hidden_feats.shape[1] == 0 and self.n_hidden_data_features > 0:
             hidden_feats = hidden_feats.new_zeros(graph["hidden"].num_nodes, self.n_hidden_data_features)
 
-        def _build_trainable(
-            module_dict: nn.ModuleDict,
-            graph_ids: torch.Tensor,
-            batch_vec: torch.Tensor,
-            feature_dim: int,
-            num_nodes_per_graph: torch.Tensor,
-        ) -> Optional[torch.Tensor]:
-            if feature_dim == 0:
-                return None
-            device = batch_vec.device
-            out = torch.zeros(batch_vec.numel(), feature_dim, device=device, dtype=torch.float32)
-            for graph_idx, gid in enumerate(graph_ids):
-                mask = batch_vec == graph_idx
-                count = int(num_nodes_per_graph[graph_idx].item())
-                key = str(int(gid.item()))
-                if key not in module_dict:
-                    module_dict[key] = TrainableFeatures(count, feature_dim)
-                feats = module_dict[key](count).to(device)
-                out[mask] = feats
-            return out
-
         # build per-node trainable features using graph ids
         num_graphs = graph.num_graphs if hasattr(graph, "num_graphs") else 1
         graph_ids = (
@@ -412,14 +391,14 @@ class EncodeProcessDecodeModel(nn.Module):
         hidden_batch = graph["hidden"].batch if "batch" in graph["hidden"] else torch.zeros(hidden_feats.size(0), dtype=torch.long)
         data_counts = torch.bincount(data_batch, minlength=num_graphs)
         hidden_counts = torch.bincount(hidden_batch, minlength=num_graphs)
-        data_trainable = _build_trainable(
+        data_trainable = self._build_trainable_features(
             self.trainable_data_modules,
             graph_ids,
             data_batch.to(data_feats.device),
             self.n_input_trainable_features,
             data_counts,
         )
-        hidden_trainable = _build_trainable(
+        hidden_trainable = self._build_trainable_features(
             self.trainable_hidden_modules,
             graph_ids,
             hidden_batch.to(hidden_feats.device),
@@ -461,6 +440,49 @@ class EncodeProcessDecodeModel(nn.Module):
         )
 
         return data_out
+
+    @staticmethod
+    def _build_trainable_features(
+        module_dict: nn.ModuleDict,
+        graph_ids: torch.Tensor,
+        batch_vec: torch.Tensor,
+        feature_dim: int,
+        num_nodes_per_graph: torch.Tensor,
+    ) -> Optional[torch.Tensor]:
+        """
+        Construct per-node trainable features for a batched graph using per-graph ids.
+
+        Parameters
+        ----------
+        module_dict : nn.ModuleDict
+            Storage for TrainableFeatures modules keyed by graph id.
+        graph_ids : torch.Tensor
+            Unique identifier per graph in the batch, shape [num_graphs].
+        batch_vec : torch.Tensor
+            Batch vector for nodes (data or hidden), shape [num_nodes].
+        feature_dim : int
+            Feature dimension to allocate per node.
+        num_nodes_per_graph : torch.Tensor
+            Node counts per graph, shape [num_graphs].
+
+        Returns
+        -------
+        torch.Tensor | None
+            Trainable feature tensor aligned with nodes or None if feature_dim == 0.
+        """
+        if feature_dim == 0:
+            return None
+        device = batch_vec.device
+        out = torch.zeros(batch_vec.numel(), feature_dim, device=device, dtype=torch.float32)
+        for graph_idx, gid in enumerate(graph_ids):
+            mask = batch_vec == graph_idx
+            count = int(num_nodes_per_graph[graph_idx].item())
+            key = str(int(gid.item()))
+            if key not in module_dict:
+                module_dict[key] = TrainableFeatures(count, feature_dim)
+            feats = module_dict[key](count).to(device)
+            out[mask] = feats
+        return out
 
 
 # ============================================================
@@ -547,26 +569,31 @@ class DummyWeatherDataset(Dataset):
         n_input_data_features: int,
         n_output_data_features: int,
         n_hidden_data_features: int,
+        n_unique_graphs: int = 2,
     ):
         self.num_samples = num_samples
         self.num_data_nodes = num_data_nodes
         self.n_input_data_features = n_input_data_features
         self.n_output_data_features = n_output_data_features
-        self._graph_id_counter = itertools.count()
         self.n_hidden_data_features = n_hidden_data_features
+        self.n_unique_graphs = n_unique_graphs
+        self.graphs: list[HeteroData] = []
+        for gid in range(n_unique_graphs):
+            g = build_dummy_weather_graph(
+                num_data_nodes=self.num_data_nodes,
+                num_hidden_nodes=max(1, self.num_data_nodes // 2),
+                edge_attr_dim=2,
+                n_data_node_features=0,
+                n_hidden_node_features=self.n_hidden_data_features,
+            )
+            g.graph_id = torch.tensor([gid], dtype=torch.long)
+            self.graphs.append(g)
 
     def __len__(self) -> int:
         return self.num_samples
 
     def __getitem__(self, idx: int) -> HeteroData:
-        graph = build_dummy_weather_graph(
-            num_data_nodes=self.num_data_nodes,
-            num_hidden_nodes=max(1, self.num_data_nodes // 2),
-            edge_attr_dim=2,
-            n_data_node_features=0,
-            n_hidden_node_features=self.n_hidden_data_features,
-        )
-        graph.graph_id = torch.tensor([next(self._graph_id_counter)], dtype=torch.long)
+        graph = self.graphs[idx % self.n_unique_graphs].clone()
         graph["data"].x = torch.randn(self.num_data_nodes, self.n_input_data_features)
         if self.n_hidden_data_features > 0:
             graph["hidden"].x = torch.randn(graph["hidden"].num_nodes, self.n_hidden_data_features)
