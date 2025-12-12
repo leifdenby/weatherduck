@@ -3,6 +3,7 @@ from torch_geometric.nn import SAGEConv
 
 from weatherduck.weatherduck import (
     EncodeProcessDecodeModel,
+    TrainableFeatureManager,
     WeatherDuckDataModule,
     build_encode_process_decode_model,
 )
@@ -15,7 +16,7 @@ def test_single_batch_forward():
     n_output_data_features = 8
     n_hidden_data_features = 4
     n_input_trainable_features = 2
-    n_trainable_hidden_features = 3
+    n_hidden_trainable_features = 3
     hidden_dim = 64
 
     dm = WeatherDuckDataModule(
@@ -28,13 +29,18 @@ def test_single_batch_forward():
     dm.setup("fit")
     batch = next(iter(dm.train_dataloader()))
 
+    manager = TrainableFeatureManager(
+        n_input_trainable_features=n_input_trainable_features,
+        n_hidden_trainable_features=n_hidden_trainable_features,
+    )
     model = build_encode_process_decode_model(
         n_input_data_features=n_input_data_features,
         n_output_data_features=n_output_data_features,
         n_hidden_data_features=n_hidden_data_features,
         n_input_trainable_features=n_input_trainable_features,
-        n_trainable_hidden_features=n_trainable_hidden_features,
+        n_hidden_trainable_features=n_hidden_trainable_features,
         hidden_dim=hidden_dim,
+        trainable_manager=manager,
     )
 
     model.eval()
@@ -50,7 +56,7 @@ def test_trainable_params_match_unique_graphs():
     n_output_data_features = 2
     n_hidden_data_features = 1
     n_input_trainable_features = 2
-    n_trainable_hidden_features = 3
+    n_hidden_trainable_features = 3
     hidden_dim = 16
     num_nodes_per_graph = {0: 6, 1: 8, 2: 10}
     n_unique_graphs = len(num_nodes_per_graph)
@@ -65,13 +71,18 @@ def test_trainable_params_match_unique_graphs():
         n_unique_graphs=n_unique_graphs,
     )
     dm.setup("fit")
+    manager = TrainableFeatureManager(
+        n_input_trainable_features=n_input_trainable_features,
+        n_hidden_trainable_features=n_hidden_trainable_features,
+    )
     model = build_encode_process_decode_model(
         n_input_data_features=n_input_data_features,
         n_output_data_features=n_output_data_features,
         n_hidden_data_features=n_hidden_data_features,
         n_input_trainable_features=n_input_trainable_features,
-        n_trainable_hidden_features=n_trainable_hidden_features,
+        n_hidden_trainable_features=n_hidden_trainable_features,
         hidden_dim=hidden_dim,
+        trainable_manager=manager,
     )
 
     model.eval()
@@ -80,11 +91,11 @@ def test_trainable_params_match_unique_graphs():
             _ = model(batch)
 
     # Trainable feature modules should match number of unique graphs
-    assert len(model.trainable_data_modules) == n_unique_graphs
-    assert len(model.trainable_hidden_modules) == n_unique_graphs
-    for gid, module in model.trainable_data_modules.items():
+    assert len(manager.data_modules) == n_unique_graphs
+    assert len(manager.hidden_modules) == n_unique_graphs
+    for gid, module in manager.data_modules.items():
         expected = num_nodes_per_graph[int(gid)]
         assert module.trainable.shape[0] == expected
-    for gid, module in model.trainable_hidden_modules.items():
+    for gid, module in manager.hidden_modules.items():
         expected = num_nodes_per_graph[int(gid)] // 2
         assert module.trainable.shape[0] == expected
