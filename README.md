@@ -18,12 +18,16 @@ Weatherduck was built to be a lightweight, hydra-free scaffold that mirrors [neu
 ## What’s inside
 - `src/weatherduck/weatherduck.py`: Core implementation
   - `EncodeProcessDecodeModel`: encode → processor → decode GNN working on `HeteroData` batches.
+  - `AutoRegressiveForecaster`: wraps a step-wise `EncodeProcessDecodeModel` to roll out multi-step forecasts over time.
   - `SingleNodesetEncoder`, `Processor`, `SingleNodesetDecoder`: slim mapper blocks.
-  - `TrainableFeatures`: learnable per-node feature tensors.
-  - `WeatherDuckDataModule`/`DummyWeatherDataset`: placeholder data with random `HeteroData`.
-  - `experiment_factory`: Fiddle config returning an `Experiment` (model + datamodule + trainer).
+  - `TrainableFeatures` + `TrainableFeatureManager`: learnable per-graph/node trainable features, shared across batches.
+  - `WeatherDuckDataModule`/`DummyWeatherDataset`: placeholder static graphs for single-step training.
+  - `TimeseriesWeatherDataModule`/`TimeseriesDummyWeatherDataset`: dummy timeseries graphs with node-first, time-last feature tensors for auto-regressive rollouts.
+  - `experiment_factory`: Fiddle config returning an `Experiment` (single-step).
+  - `autoregressive_experiment_factory`: Fiddle config for the autoregressive forecaster + timeseries data.
 - `src/weatherduck/__init__.py`: Public exports.
-- `tests/test_weatherduck.py`: Smoke test creating a model and running a batch through it.
+- `tests/test_weatherduck.py`: Smoke tests for single-step training.
+- `tests/test_autoregressive.py`: Smoke tests for autoregressive forecasting.
 - `main.py` (invoked by `uv run weatherduck`): builds the Fiddle experiment and runs a short training loop.
 
 ## Quick start
