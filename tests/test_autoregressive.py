@@ -15,7 +15,7 @@ def test_autoregressive_forecaster_runs():
     n_output_features = 4
     n_hidden_data_features = 2
     n_input_trainable_features = 1
-    n_trainable_hidden_features = 2
+    n_hidden_trainable_features = 2
     hidden_dim = 32
 
     dm = TimeseriesWeatherDataModule(
@@ -35,14 +35,14 @@ def test_autoregressive_forecaster_runs():
     # step model: input = current state + forcing + static; we fold forcing/static dims into input_data_features here
     manager = TrainableFeatureManager(
         n_input_trainable_features=0,
-        n_trainable_hidden_features=n_trainable_hidden_features,
+        n_hidden_trainable_features=n_hidden_trainable_features,
     )
     step_model = build_encode_process_decode_model(
         n_input_data_features=n_state_features + 2 + 1,  # state + forcing + static
         n_output_data_features=n_output_features,
         n_hidden_data_features=n_hidden_data_features,
         n_input_trainable_features=n_input_trainable_features,
-        n_trainable_hidden_features=n_trainable_hidden_features,
+        n_hidden_trainable_features=n_hidden_trainable_features,
         hidden_dim=hidden_dim,
         trainable_manager=manager,
     )

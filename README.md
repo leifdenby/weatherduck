@@ -36,7 +36,7 @@ This uses dummy graphs/data and should execute end-to-end on CPU or MPS.
 - `n_input_data_features`: dataset-provided data-node features.
 - `n_hidden_data_features`: dataset-provided hidden-node features.
 - `n_input_trainable_features`: learnable features appended to each data node.
-- `n_trainable_hidden_features`: learnable features appended to each hidden node.
+- `n_hidden_trainable_features`: learnable features appended to each hidden node.
 - `n_output_data_features`: decoder output channels on data nodes.
 
 ## Graph expectations

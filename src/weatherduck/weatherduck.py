@@ -125,14 +125,14 @@ class TrainableFeatureManager(nn.Module):
     ----------
     n_input_trainable_features : int
         Trainable feature length per data node.
-    n_trainable_hidden_features : int
+    n_hidden_trainable_features : int
         Trainable feature length per hidden node.
     """
 
-    def __init__(self, n_input_trainable_features: int, n_trainable_hidden_features: int):
+    def __init__(self, n_input_trainable_features: int, n_hidden_trainable_features: int):
         super().__init__()
         self.n_input_trainable_features = n_input_trainable_features
-        self.n_trainable_hidden_features = n_trainable_hidden_features
+        self.n_hidden_trainable_features = n_hidden_trainable_features
         self.data_modules = nn.ModuleDict()
         self.hidden_modules = nn.ModuleDict()
 
@@ -154,7 +154,7 @@ class TrainableFeatureManager(nn.Module):
             the requested feature dimension is 0.
         """
         feature_dim = (
-            self.n_input_trainable_features if node_type == "data" else self.n_trainable_hidden_features
+            self.n_input_trainable_features if node_type == "data" else self.n_hidden_trainable_features
         )
         if feature_dim == 0:
             return None
@@ -357,7 +357,7 @@ class EncodeProcessDecodeModel(nn.Module):
         Number of dataset-provided hidden node features.
     n_input_trainable_features : int, default 0
         Learnable feature length per data node.
-    n_trainable_hidden_features : int, default 0
+        n_hidden_trainable_features : int, default 0
         Learnable feature length per hidden node.
 
     Returns
@@ -375,7 +375,7 @@ class EncodeProcessDecodeModel(nn.Module):
         n_output_data_features: int = 8,
         n_hidden_data_features: int = 0,
         n_input_trainable_features: int = 0,
-        n_trainable_hidden_features: int = 0,
+        n_hidden_trainable_features: int = 0,
         trainable_manager: Optional[TrainableFeatureManager] = None,
     ):
         super().__init__()
@@ -386,9 +386,9 @@ class EncodeProcessDecodeModel(nn.Module):
         self.n_output_data_features = n_output_data_features
         self.n_hidden_data_features = n_hidden_data_features
         self.n_input_trainable_features = n_input_trainable_features
-        self.n_trainable_hidden_features = n_trainable_hidden_features
+        self.n_hidden_trainable_features = n_hidden_trainable_features
         self.trainable_manager = trainable_manager or TrainableFeatureManager(
-            n_input_trainable_features, n_trainable_hidden_features
+            n_input_trainable_features, n_hidden_trainable_features
         )
 
     def forward(self, graph: HeteroData) -> torch.Tensor:
@@ -578,7 +578,7 @@ class AutoRegressiveForecaster(nn.Module):
 
             prev_states = torch.cat([prev_states[:, :, 1:], pred.unsqueeze(-1)], dim=2)
 
-        return torch.stack(preds, dim=0)
+        return torch.stack(preds, dim=2)
 
     @staticmethod
     def _build_trainable_features(
@@ -920,7 +920,7 @@ def build_encode_process_decode_model(
     n_output_data_features: int,
     n_hidden_data_features: int,
     n_input_trainable_features: int,
-    n_trainable_hidden_features: int,
+    n_hidden_trainable_features: int,
     hidden_dim: int,
     trainable_manager: Optional[TrainableFeatureManager] = None,
 ) -> EncodeProcessDecodeModel:
@@ -937,7 +937,7 @@ def build_encode_process_decode_model(
         Dataset-provided hidden node features.
     n_input_trainable_features : int
         Trainable feature length per data node.
-    n_trainable_hidden_features : int
+    n_hidden_trainable_features : int
         Trainable feature length per hidden node.
     hidden_dim : int
         Latent dimension for encoder/processor/decoder.
@@ -948,7 +948,7 @@ def build_encode_process_decode_model(
     """
     encoder = SingleNodesetEncoder(
         embedder_src=make_mlp(n_input_data_features + n_input_trainable_features, hidden_dim, hidden_dim),
-        embedder_dst=make_mlp(n_hidden_data_features + n_trainable_hidden_features, hidden_dim, hidden_dim),
+        embedder_dst=make_mlp(n_hidden_data_features + n_hidden_trainable_features, hidden_dim, hidden_dim),
         message_op=SAGEConv((hidden_dim, hidden_dim), hidden_dim),
         post_linear=nn.Linear(hidden_dim, hidden_dim),
     )
@@ -958,7 +958,7 @@ def build_encode_process_decode_model(
     )
     decoder = SingleNodesetDecoder(
         embedder_src=make_mlp(
-            hidden_dim + n_hidden_data_features + n_trainable_hidden_features, hidden_dim, hidden_dim
+            hidden_dim + n_hidden_data_features + n_hidden_trainable_features, hidden_dim, hidden_dim
         ),
         embedder_dst=make_mlp(n_input_data_features + n_input_trainable_features, hidden_dim, hidden_dim),
         message_op=SAGEConv((hidden_dim, hidden_dim), hidden_dim),
@@ -966,7 +966,7 @@ def build_encode_process_decode_model(
     )
 
     manager = trainable_manager or TrainableFeatureManager(
-        n_input_trainable_features, n_trainable_hidden_features
+        n_input_trainable_features, n_hidden_trainable_features
     )
 
     return EncodeProcessDecodeModel(
@@ -977,7 +977,7 @@ def build_encode_process_decode_model(
         n_output_data_features=n_output_data_features,
         n_hidden_data_features=n_hidden_data_features,
         n_input_trainable_features=n_input_trainable_features,
-        n_trainable_hidden_features=n_trainable_hidden_features,
+        n_hidden_trainable_features=n_hidden_trainable_features,
         trainable_manager=manager,
     )
 
@@ -1107,13 +1107,13 @@ def experiment_factory() -> Experiment:
     hidden_dim = 128
     n_hidden_data_features = 4
     n_input_trainable_features = 2
-    n_trainable_hidden_features = 3
+    n_hidden_trainable_features = 3
     core_model = build_encode_process_decode_model(
         n_input_data_features=n_input_data_features,
         n_output_data_features=n_output_data_features,
         n_hidden_data_features=n_hidden_data_features,
         n_input_trainable_features=n_input_trainable_features,
-        n_trainable_hidden_features=n_trainable_hidden_features,
+        n_hidden_trainable_features=n_hidden_trainable_features,
         hidden_dim=hidden_dim,
     )
 
@@ -1155,7 +1155,7 @@ def autoregressive_experiment_factory() -> Experiment:
     n_output_data_features = 6
     n_hidden_data_features = 3
     n_input_trainable_features = 2
-    n_trainable_hidden_features = 2
+    n_hidden_trainable_features = 2
     n_forcing_features = 2
     n_static_features = 1
     hidden_dim = 128
@@ -1165,7 +1165,7 @@ def autoregressive_experiment_factory() -> Experiment:
         n_output_data_features=n_output_data_features,
         n_hidden_data_features=n_hidden_data_features,
         n_input_trainable_features=n_input_trainable_features,
-        n_trainable_hidden_features=n_trainable_hidden_features,
+        n_hidden_trainable_features=n_hidden_trainable_features,
         hidden_dim=hidden_dim,
     )
 

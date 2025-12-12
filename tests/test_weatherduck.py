@@ -16,7 +16,7 @@ def test_single_batch_forward():
     n_output_data_features = 8
     n_hidden_data_features = 4
     n_input_trainable_features = 2
-    n_trainable_hidden_features = 3
+    n_hidden_trainable_features = 3
     hidden_dim = 64
 
     dm = WeatherDuckDataModule(
@@ -31,14 +31,14 @@ def test_single_batch_forward():
 
     manager = TrainableFeatureManager(
         n_input_trainable_features=n_input_trainable_features,
-        n_trainable_hidden_features=n_trainable_hidden_features,
+        n_hidden_trainable_features=n_hidden_trainable_features,
     )
     model = build_encode_process_decode_model(
         n_input_data_features=n_input_data_features,
         n_output_data_features=n_output_data_features,
         n_hidden_data_features=n_hidden_data_features,
         n_input_trainable_features=n_input_trainable_features,
-        n_trainable_hidden_features=n_trainable_hidden_features,
+        n_hidden_trainable_features=n_hidden_trainable_features,
         hidden_dim=hidden_dim,
         trainable_manager=manager,
     )
@@ -56,7 +56,7 @@ def test_trainable_params_match_unique_graphs():
     n_output_data_features = 2
     n_hidden_data_features = 1
     n_input_trainable_features = 2
-    n_trainable_hidden_features = 3
+    n_hidden_trainable_features = 3
     hidden_dim = 16
     num_nodes_per_graph = {0: 6, 1: 8, 2: 10}
     n_unique_graphs = len(num_nodes_per_graph)
@@ -73,14 +73,14 @@ def test_trainable_params_match_unique_graphs():
     dm.setup("fit")
     manager = TrainableFeatureManager(
         n_input_trainable_features=n_input_trainable_features,
-        n_trainable_hidden_features=n_trainable_hidden_features,
+        n_hidden_trainable_features=n_hidden_trainable_features,
     )
     model = build_encode_process_decode_model(
         n_input_data_features=n_input_data_features,
         n_output_data_features=n_output_data_features,
         n_hidden_data_features=n_hidden_data_features,
         n_input_trainable_features=n_input_trainable_features,
-        n_trainable_hidden_features=n_trainable_hidden_features,
+        n_hidden_trainable_features=n_hidden_trainable_features,
         hidden_dim=hidden_dim,
         trainable_manager=manager,
     )
