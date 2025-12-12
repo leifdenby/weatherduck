@@ -9,6 +9,7 @@ Weatherduck was built to be a lightweight, hydra-free scaffold that mirrors [neu
 
 - Prototype message-passing architectures on weather-style data without wiring up the full neural-lam/anemoi stack.
 - Serve as an inspiration for how one could structure GNN-based weather model achitectures and training in PyTorch Lightning + PyG + Fiddle.
+  - See [example notebook](notebooks/fiddle.ipynb) using fiddle to visualize a weatherduck experiment
 - Keep model architecture components small and override-friendly (for example with drop-in custom MessagePassing classes).
 - Exercise end-to-end Lightning + PyG training with dummy graphs so you can iterate on model code and configs before real data/graphs are ready.
   - support for loading data from anemoi and neural-lam datasets is planned but not yet implemented.
