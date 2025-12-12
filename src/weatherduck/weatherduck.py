@@ -343,7 +343,7 @@ class EncodeProcessDecodeModel(nn.Module):
             Must contain:
             - node types: {'data', 'hidden'}
                 * graph['data'].x: [N_data, n_input_data_features]
-                    Initial state for forward predicition. E.g. two timesteps
+                    Initial state for forward prediction. E.g. two timesteps
                     of initial state features, forcing features and static
                     features all concatenated into "data features".
                 * graph['hidden'].x: [N_hidden, n_hidden_data_features]
