@@ -28,7 +28,6 @@ class AutoRegressiveForecaster(nn.Module):
               - x_init_states: [N, d_state, 2] initial history
               - x_forcing: [N, d_forcing, T]
               - x_static: [N, d_static]
-              - y: [N, d_target, T] targets (used by Lightning loss)
             Edge structure must satisfy the step_predictor requirements.
 
         Returns
@@ -39,7 +38,6 @@ class AutoRegressiveForecaster(nn.Module):
         x_init = graph["data"].x_init_states  # [N, d_state, 2]
         x_forcing = graph["data"].x_forcing  # [N, d_forcing, T]
         x_static = graph["data"].x_static  # [N, d_static]
-        y = graph["data"].y
 
         N, d_state, history_len = x_init.shape
         assert (
@@ -52,9 +50,6 @@ class AutoRegressiveForecaster(nn.Module):
         assert x_init.shape == (N, d_state, history_len)
         assert x_forcing.shape == (N, d_forcing, T)
         assert x_static.shape == (N, d_static)
-        assert (
-            y.dim() == 3 and y.shape[0] == N and y.shape[2] == T
-        ), f"Expected y shape [N, d_target, T] with N={N}, T={T}, got {tuple(y.shape)}"
 
         preds = []
         prev_states = x_init

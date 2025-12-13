@@ -7,7 +7,7 @@ Notes for future agents working in this repo.
   - Model components: `SingleNodesetEncoder`, `Processor`, `SingleNodesetDecoder`, `EncodeProcessDecodeModel`.
   - Trainable feature utilities: `TrainableFeatures`, `TrainableFeatureManager`.
   - Auto-regressive wrapper: `AutoRegressiveForecaster`.
-- Dummy datasets/datamodules (single-step and timeseries), `WeatherDuckModule`, and Fiddle factories (`build_encode_process_decode_model`, `experiment_factory`, `autoregressive_experiment_factory`).
+- Dummy datasets/datamodules (single-step and timeseries), `WeatherDuckModule` (Lightning wrapper), and Fiddle factories (`build_encode_process_decode_model`, `experiment_factory`, `autoregressive_experiment_factory`).
   - CLI entrypoint in `src/weatherduck/main.py` (run with `uv run weatherduck`).
 - **Dependencies/tooling**: Managed via `uv` (`pyproject.toml` + `uv.lock`). Use `uv run ...` to respect the locked environment.
 - **Testing**: Run the suite with `uv run pytest`.

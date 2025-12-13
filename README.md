@@ -55,8 +55,11 @@ This uses dummy graphs/data and should execute end-to-end on CPU or MPS.
   - `x_init_states`: `[N, d_state, 2]` initial history (latest state in the last slot)
   - `x_forcing`: `[N, d_forcing, T]`
   - `x_static`: `[N, d_static]`
-  - `y`: `[N, d_target, T]` targets (Lightning loss uses this)
 - Shares the same edge/node structure required by the underlying EncodeProcessDecodeModel (data/hidden node types and the three edge sets above). From `x_init_states`, `x_forcing` and `x_static` the model constructs `graph["data"].x` for each step to pass down to the provided `step_predictor` (e.g. an EncodeProcessDecodeModel).
+
+`WeatherDuckModule` (`LightningModule`) (takes e.g. an `EncodeProcessDecodeModel` or `AutoRegressiveForecaster`)
+- passes `graph` to the model's `forward` method to get predictions (`y_hat`)
+- expects `graph['data'].y` to compute the loss; this tensor is not consumed by the step predictor itself.
 
 Shapes follow the convention: first dim = nodes, last dim = time (for sequences), this is required because PyG data-loader batches graphs along the first dimension.
 
