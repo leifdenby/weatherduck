@@ -9,9 +9,9 @@ from torch_geometric.nn import SAGEConv
 
 from .ar_forecaster import AutoRegressiveForecaster
 from .data.dummy import TimeseriesWeatherDataModule, WeatherDuckDataModule
+from .lightning import WeatherDuckModule
 from .step_predictor import (
     EncodeProcessDecodeModel,
-    LitWeatherDuck,
     Processor,
     SingleNodesetDecoder,
     SingleNodesetEncoder,
@@ -116,7 +116,7 @@ def experiment_factory() -> Experiment:
         hidden_dim=hidden_dim,
     )
 
-    lit_module = LitWeatherDuck(
+    lit_module = WeatherDuckModule(
         model=core_model,
         lr=1e-3,
     )
@@ -174,7 +174,7 @@ def autoregressive_experiment_factory() -> Experiment:
         step_predictor=step_model,
     )
 
-    lit_module = LitWeatherDuck(
+    lit_module = WeatherDuckModule(
         model=ar_model,
         lr=1e-3,
     )

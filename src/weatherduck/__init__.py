@@ -12,10 +12,10 @@ from .data import (
     WeatherDuckDataModule,
     build_dummy_weather_graph,
 )
+from .lightning import WeatherDuckModule
 from .main import main
 from .step_predictor import (
     EncodeProcessDecodeModel,
-    LitWeatherDuck,
     Processor,
     SingleNodesetDecoder,
     SingleNodesetEncoder,
@@ -28,7 +28,7 @@ __all__ = [
     "AutoRegressiveForecaster",
     "Experiment",
     "EncodeProcessDecodeModel",
-    "LitWeatherDuck",
+    "WeatherDuckModule",
     "Processor",
     "SingleNodesetDecoder",
     "SingleNodesetEncoder",

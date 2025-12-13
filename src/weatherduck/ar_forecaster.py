@@ -26,9 +26,9 @@ class AutoRegressiveForecaster(nn.Module):
         graph : HeteroData
             Must contain on 'data' nodes:
               - x_init_states: [N, d_state, 2] initial history
-              - x_target_states: [N, d_state, T] targets per step
               - x_forcing: [N, d_forcing, T]
               - x_static: [N, d_static]
+              - y: [N, d_target, T] targets (used by Lightning loss)
             Edge structure must satisfy the step_predictor requirements.
 
         Returns
@@ -37,17 +37,24 @@ class AutoRegressiveForecaster(nn.Module):
             Predicted states of shape [T, N, d_state_out].
         """
         x_init = graph["data"].x_init_states  # [N, d_state, 2]
-        x_targets = graph["data"].x_target_states  # [N, d_state, T]
         x_forcing = graph["data"].x_forcing  # [N, d_forcing, T]
         x_static = graph["data"].x_static  # [N, d_static]
+        y = graph["data"].y
 
-        N, d_state, T = x_targets.shape
+        N, d_state, history_len = x_init.shape
+        assert (
+            history_len == 2
+        ), f"x_init_states expected history len 2, got {history_len}"
+        T = x_forcing.shape[2]
         d_forcing = x_forcing.shape[1]
         d_static = x_static.shape[1]
 
-        assert x_init.shape == (N, d_state, 2)
+        assert x_init.shape == (N, d_state, history_len)
         assert x_forcing.shape == (N, d_forcing, T)
         assert x_static.shape == (N, d_static)
+        assert (
+            y.dim() == 3 and y.shape[0] == N and y.shape[2] == T
+        ), f"Expected y shape [N, d_target, T] with N={N}, T={T}, got {tuple(y.shape)}"
 
         preds = []
         prev_states = x_init

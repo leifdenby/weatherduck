@@ -16,7 +16,8 @@ Weatherduck was built to be a lightweight, hydra-free scaffold that mirrors [neu
 - Clarify feature bookkeeping (n_*_features + trainable features) and graph expectations in one place.
 
 ## What’s inside
-- `src/weatherduck/step_predictor.py`: single-step components (`EncodeProcessDecodeModel`, `SingleNodesetEncoder`/`Processor`/`SingleNodesetDecoder`, trainable feature utilities, Lightning wrapper).
+- `src/weatherduck/step_predictor.py`: single-step components (`EncodeProcessDecodeModel`, `SingleNodesetEncoder`/`Processor`/`SingleNodesetDecoder`, trainable feature utilities).
+- `src/weatherduck/lightning.py`: Lightning wrapper (`WeatherDuckModule`) around any model.
 - `src/weatherduck/ar_forecaster.py`: `AutoRegressiveForecaster` that rolls out multi-step predictions with a provided step predictor.
 - `src/weatherduck/data/dummy.py`: dummy datasets/datamodules for single-step and timeseries graphs plus `build_dummy_weather_graph`.
 - `src/weatherduck/configs.py`: Fiddle factories (`build_encode_process_decode_model`, `experiment_factory`, `autoregressive_experiment_factory`) and the `Experiment` dataclass.
@@ -52,9 +53,9 @@ This uses dummy graphs/data and should execute end-to-end on CPU or MPS.
 `AutoRegressiveForecaster` (wraps e.g. an `EncodeProcessDecodeModel` for one-step prediction)
 - Node type: `{'data'}` features:
   - `x_init_states`: `[N, d_state, 2]` initial history (latest state in the last slot)
-  - `x_target_states`: `[N, d_state, T]` autoregressive targets
   - `x_forcing`: `[N, d_forcing, T]`
   - `x_static`: `[N, d_static]`
+  - `y`: `[N, d_target, T]` targets (Lightning loss uses this)
 - Shares the same edge/node structure required by the underlying EncodeProcessDecodeModel (data/hidden node types and the three edge sets above). From `x_init_states`, `x_forcing` and `x_static` the model constructs `graph["data"].x` for each step to pass down to the provided `step_predictor` (e.g. an EncodeProcessDecodeModel).
 
 Shapes follow the convention: first dim = nodes, last dim = time (for sequences), this is required because PyG data-loader batches graphs along the first dimension.

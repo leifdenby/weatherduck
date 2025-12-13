@@ -168,15 +168,14 @@ class TimeseriesDummyWeatherDataset(Dataset):
         )
 
         graph["data"].x_init_states = torch.randn(num_nodes, self.n_state_features, 2)
-        graph["data"].x_target_states = torch.randn(
-            num_nodes, self.n_state_features, self.ar_steps
-        )
         graph["data"].x_forcing = torch.randn(
             num_nodes, self.n_forcing_features, self.ar_steps
         )
         graph["data"].x_static = torch.randn(num_nodes, self.n_static_features)
         graph["data"].x = graph["data"].x_init_states[:, :, -1]
-        graph["data"].y = graph["data"].x_target_states  # [N, d_state, T]
+        graph["data"].y = torch.randn(
+            num_nodes, self.n_state_features, self.ar_steps
+        )  # [N, d_state, T]
 
         if self.n_hidden_data_features > 0:
             graph["hidden"].x = torch.randn(
