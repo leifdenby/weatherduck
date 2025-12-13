@@ -1,10 +1,6 @@
 import torch
 
-from weatherduck import (
-    WeatherDuckDataModule,
-    build_encode_process_decode_model,
-    build_dummy_weather_graph,
-)
+from weatherduck import WeatherDuckDataModule, build_encode_process_decode_model
 
 
 def test_single_batch_forward():

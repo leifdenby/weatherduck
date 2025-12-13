@@ -1,10 +1,9 @@
-from .configs import autoregressive_experiment_factory, experiment_factory
 from loguru import logger
+
+from .configs import autoregressive_experiment_factory
 
 
 def main():
     exp = autoregressive_experiment_factory()
-    import ipdb
-    with ipdb.launch_ipdb_on_exception():
-        with logger.catch(reraise=True):
-            exp.run()
+    with logger.catch(reraise=True):
+        exp.run()

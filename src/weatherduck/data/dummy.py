@@ -27,9 +27,15 @@ def build_dummy_weather_graph(
         dst_choices = torch.randint(0, n_dst, (n_src * fanout,))
         return torch.stack([src, dst_choices], dim=0)
 
-    graph["data", "to", "hidden"].edge_index = dense_edges(num_data_nodes, num_hidden_nodes, fanout=4)
-    graph["hidden", "to", "hidden"].edge_index = dense_edges(num_hidden_nodes, num_hidden_nodes, fanout=6)
-    graph["hidden", "to", "data"].edge_index = dense_edges(num_hidden_nodes, num_data_nodes, fanout=4)
+    graph["data", "to", "hidden"].edge_index = dense_edges(
+        num_data_nodes, num_hidden_nodes, fanout=4
+    )
+    graph["hidden", "to", "hidden"].edge_index = dense_edges(
+        num_hidden_nodes, num_hidden_nodes, fanout=6
+    )
+    graph["hidden", "to", "data"].edge_index = dense_edges(
+        num_hidden_nodes, num_data_nodes, fanout=4
+    )
 
     for key in [
         ("data", "to", "hidden"),
@@ -86,13 +92,17 @@ class DummyWeatherDataset(Dataset):
         if isinstance(self.num_data_nodes, dict):
             gid = int(graph.graph_id.item())
             num_data_nodes = self.num_data_nodes.get(gid)
-            assert num_data_nodes is not None, f"num_data_nodes missing entry for graph id {gid}"
+            assert (
+                num_data_nodes is not None
+            ), f"num_data_nodes missing entry for graph id {gid}"
         else:
             num_data_nodes = self.num_data_nodes
 
         graph["data"].x = torch.randn(num_data_nodes, self.n_input_data_features)
         if self.n_hidden_data_features > 0:
-            graph["hidden"].x = torch.randn(graph["hidden"].num_nodes, self.n_hidden_data_features)
+            graph["hidden"].x = torch.randn(
+                graph["hidden"].num_nodes, self.n_hidden_data_features
+            )
         else:
             graph["hidden"].x = torch.zeros(graph["hidden"].num_nodes, 0)
         graph["data"].y = torch.randn(num_data_nodes, self.n_output_data_features)
@@ -130,7 +140,11 @@ class TimeseriesDummyWeatherDataset(Dataset):
 
         self.graphs: list[HeteroData] = []
         for gid in range(n_unique_graphs):
-            num_nodes = num_data_nodes[gid] if isinstance(num_data_nodes, dict) else num_data_nodes
+            num_nodes = (
+                num_data_nodes[gid]
+                if isinstance(num_data_nodes, dict)
+                else num_data_nodes
+            )
             g = build_dummy_weather_graph(
                 num_data_nodes=num_nodes,
                 num_hidden_nodes=max(1, num_nodes // 2),
@@ -147,17 +161,27 @@ class TimeseriesDummyWeatherDataset(Dataset):
     def __getitem__(self, idx: int) -> HeteroData:
         graph = self.graphs[idx % self.n_unique_graphs].clone()
         gid = int(graph.graph_id.item())
-        num_nodes = self.num_data_nodes[gid] if isinstance(self.num_data_nodes, dict) else self.num_data_nodes
+        num_nodes = (
+            self.num_data_nodes[gid]
+            if isinstance(self.num_data_nodes, dict)
+            else self.num_data_nodes
+        )
 
         graph["data"].x_init_states = torch.randn(num_nodes, self.n_state_features, 2)
-        graph["data"].x_target_states = torch.randn(num_nodes, self.n_state_features, self.ar_steps)
-        graph["data"].x_forcing = torch.randn(num_nodes, self.n_forcing_features, self.ar_steps)
+        graph["data"].x_target_states = torch.randn(
+            num_nodes, self.n_state_features, self.ar_steps
+        )
+        graph["data"].x_forcing = torch.randn(
+            num_nodes, self.n_forcing_features, self.ar_steps
+        )
         graph["data"].x_static = torch.randn(num_nodes, self.n_static_features)
         graph["data"].x = graph["data"].x_init_states[:, :, -1]
         graph["data"].y = graph["data"].x_target_states  # [N, d_state, T]
 
         if self.n_hidden_data_features > 0:
-            graph["hidden"].x = torch.randn(graph["hidden"].num_nodes, self.n_hidden_data_features)
+            graph["hidden"].x = torch.randn(
+                graph["hidden"].num_nodes, self.n_hidden_data_features
+            )
         else:
             graph["hidden"].x = torch.zeros(graph["hidden"].num_nodes, 0)
         return graph
@@ -217,13 +241,22 @@ class WeatherDuckDataModule(pl.LightningDataModule):
         )
 
     def train_dataloader(self) -> GeoDataLoader:
-        return GeoDataLoader(self.train_ds, batch_size=self.batch_size, shuffle=True, collate_fn=self.train_ds.collate_fn)
+        return GeoDataLoader(
+            self.train_ds,
+            batch_size=self.batch_size,
+            shuffle=True,
+            collate_fn=self.train_ds.collate_fn,
+        )
 
     def val_dataloader(self) -> GeoDataLoader:
-        return GeoDataLoader(self.val_ds, batch_size=self.batch_size, collate_fn=self.val_ds.collate_fn)
+        return GeoDataLoader(
+            self.val_ds, batch_size=self.batch_size, collate_fn=self.val_ds.collate_fn
+        )
 
     def test_dataloader(self) -> GeoDataLoader:
-        return GeoDataLoader(self.test_ds, batch_size=self.batch_size, collate_fn=self.test_ds.collate_fn)
+        return GeoDataLoader(
+            self.test_ds, batch_size=self.batch_size, collate_fn=self.test_ds.collate_fn
+        )
 
 
 class TimeseriesWeatherDataModule(pl.LightningDataModule):
@@ -287,10 +320,19 @@ class TimeseriesWeatherDataModule(pl.LightningDataModule):
         )
 
     def train_dataloader(self) -> GeoDataLoader:
-        return GeoDataLoader(self.train_ds, batch_size=self.batch_size, shuffle=True, collate_fn=self.train_ds.collate_fn)
+        return GeoDataLoader(
+            self.train_ds,
+            batch_size=self.batch_size,
+            shuffle=True,
+            collate_fn=self.train_ds.collate_fn,
+        )
 
     def val_dataloader(self) -> GeoDataLoader:
-        return GeoDataLoader(self.val_ds, batch_size=self.batch_size, collate_fn=self.val_ds.collate_fn)
+        return GeoDataLoader(
+            self.val_ds, batch_size=self.batch_size, collate_fn=self.val_ds.collate_fn
+        )
 
     def test_dataloader(self) -> GeoDataLoader:
-        return GeoDataLoader(self.test_ds, batch_size=self.batch_size, collate_fn=self.test_ds.collate_fn)
+        return GeoDataLoader(
+            self.test_ds, batch_size=self.batch_size, collate_fn=self.test_ds.collate_fn
+        )

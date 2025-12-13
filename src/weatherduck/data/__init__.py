@@ -1,8 +1,8 @@
 from .dummy import (
     DummyWeatherDataset,
     TimeseriesDummyWeatherDataset,
-    WeatherDuckDataModule,
     TimeseriesWeatherDataModule,
+    WeatherDuckDataModule,
     build_dummy_weather_graph,
 )
 

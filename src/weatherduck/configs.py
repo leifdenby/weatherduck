@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Optional
 
 import fiddle
 import fiddle.experimental
@@ -53,8 +52,12 @@ def build_encode_process_decode_model(
     Factory to build an EncodeProcessDecodeModel with SAGEConv components.
     """
     encoder = SingleNodesetEncoder(
-        embedder_src=make_mlp(n_input_data_features + n_input_trainable_features, hidden_dim, hidden_dim),
-        embedder_dst=make_mlp(n_hidden_data_features + n_hidden_trainable_features, hidden_dim, hidden_dim),
+        embedder_src=make_mlp(
+            n_input_data_features + n_input_trainable_features, hidden_dim, hidden_dim
+        ),
+        embedder_dst=make_mlp(
+            n_hidden_data_features + n_hidden_trainable_features, hidden_dim, hidden_dim
+        ),
         message_op=SAGEConv((hidden_dim, hidden_dim), hidden_dim),
         post_linear=nn.Linear(hidden_dim, hidden_dim),
     )
@@ -64,9 +67,13 @@ def build_encode_process_decode_model(
     )
     decoder = SingleNodesetDecoder(
         embedder_src=make_mlp(
-            hidden_dim + n_hidden_data_features + n_hidden_trainable_features, hidden_dim, hidden_dim
+            hidden_dim + n_hidden_data_features + n_hidden_trainable_features,
+            hidden_dim,
+            hidden_dim,
         ),
-        embedder_dst=make_mlp(n_input_data_features + n_input_trainable_features, hidden_dim, hidden_dim),
+        embedder_dst=make_mlp(
+            n_input_data_features + n_input_trainable_features, hidden_dim, hidden_dim
+        ),
         message_op=SAGEConv((hidden_dim, hidden_dim), hidden_dim),
         out_linear=nn.Linear(hidden_dim, n_output_data_features),
     )
@@ -153,7 +160,9 @@ def autoregressive_experiment_factory() -> Experiment:
     hidden_dim = 128
 
     step_model = build_encode_process_decode_model(
-        n_input_data_features=n_state_features + n_forcing_features + n_static_features,  # state + forcing + static
+        n_input_data_features=n_state_features
+        + n_forcing_features
+        + n_static_features,  # state + forcing + static
         n_output_data_features=n_output_data_features,
         n_hidden_data_features=n_hidden_data_features,
         n_input_trainable_features=n_input_trainable_features,

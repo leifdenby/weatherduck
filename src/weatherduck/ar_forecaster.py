@@ -1,5 +1,3 @@
-from typing import Optional
-
 import torch
 from torch import nn
 from torch_geometric.data import HeteroData
@@ -56,7 +54,9 @@ class AutoRegressiveForecaster(nn.Module):
 
         for t in range(T):
             current_state = prev_states[:, :, -1]  # [N, d_state]
-            data_feats = torch.cat([current_state, x_forcing[:, :, t], x_static], dim=-1)
+            data_feats = torch.cat(
+                [current_state, x_forcing[:, :, t], x_static], dim=-1
+            )
 
             step_graph = graph.clone()
             step_graph["data"].x = data_feats

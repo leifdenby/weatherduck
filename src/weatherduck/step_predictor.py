@@ -78,14 +78,18 @@ class TrainableFeatureManager(nn.Module):
         Trainable feature length per hidden node.
     """
 
-    def __init__(self, n_input_trainable_features: int, n_hidden_trainable_features: int):
+    def __init__(
+        self, n_input_trainable_features: int, n_hidden_trainable_features: int
+    ):
         super().__init__()
         self.n_input_trainable_features = n_input_trainable_features
         self.n_hidden_trainable_features = n_hidden_trainable_features
         self.data_modules = nn.ModuleDict()
         self.hidden_modules = nn.ModuleDict()
 
-    def build_features(self, graph: HeteroData, node_type: str) -> Optional[torch.Tensor]:
+    def build_features(
+        self, graph: HeteroData, node_type: str
+    ) -> Optional[torch.Tensor]:
         """
         Build trainable features for a node type in a (possibly batched) graph.
 
@@ -103,7 +107,9 @@ class TrainableFeatureManager(nn.Module):
             the requested feature dimension is 0.
         """
         feature_dim = (
-            self.n_input_trainable_features if node_type == "data" else self.n_hidden_trainable_features
+            self.n_input_trainable_features
+            if node_type == "data"
+            else self.n_hidden_trainable_features
         )
         if feature_dim == 0:
             return None
@@ -112,16 +118,24 @@ class TrainableFeatureManager(nn.Module):
         batch_vec = (
             graph[node_type].batch
             if "batch" in graph[node_type]
-            else torch.zeros(graph[node_type].num_nodes, dtype=torch.long, device=device)
+            else torch.zeros(
+                graph[node_type].num_nodes, dtype=torch.long, device=device
+            )
         )
-        num_graphs = graph.num_graphs if hasattr(graph, "num_graphs") else (int(batch_vec.max().item()) + 1)
+        num_graphs = (
+            graph.num_graphs
+            if hasattr(graph, "num_graphs")
+            else (int(batch_vec.max().item()) + 1)
+        )
         graph_ids = (
             graph.graph_id.to(device)
             if hasattr(graph, "graph_id")
             else torch.arange(num_graphs, device=device)
         )
         counts = torch.bincount(batch_vec, minlength=num_graphs)
-        out = torch.zeros(batch_vec.numel(), feature_dim, device=device, dtype=torch.float32)
+        out = torch.zeros(
+            batch_vec.numel(), feature_dim, device=device, dtype=torch.float32
+        )
         for graph_idx, gid in enumerate(graph_ids):
             mask = batch_vec == graph_idx
             count = int(counts[graph_idx].item())
@@ -146,7 +160,9 @@ def run_message_op(
     if "edge_attr" in sig.parameters:
         return op(x, edge_index, edge_attr=edge_attr)
     if "edge_weight" in sig.parameters:
-        edge_weight = edge_attr[:, 0] if edge_attr is not None and edge_attr.dim() == 2 else None
+        edge_weight = (
+            edge_attr[:, 0] if edge_attr is not None and edge_attr.dim() == 2 else None
+        )
         return op(x, edge_index, edge_weight=edge_weight)
     return op(x, edge_index)
 
@@ -195,7 +211,9 @@ class SingleNodesetEncoder(nn.Module):
     ) -> torch.Tensor:
         x_src = self.activation(self.embedder_src(x_src))
         x_dst = self.activation(self.embedder_dst(x_dst))
-        x_dst = self.activation(run_message_op(self.message_op, (x_src, x_dst), edge_index, edge_attr))
+        x_dst = self.activation(
+            run_message_op(self.message_op, (x_src, x_dst), edge_index, edge_attr)
+        )
         if self.post is not None:
             x_dst = self.post(x_dst)
         return x_dst
@@ -228,9 +246,14 @@ class Processor(nn.Module):
         )
 
     def forward(
-        self, x_hidden: torch.Tensor, edge_index: torch.Tensor, edge_attr: Optional[torch.Tensor] = None
+        self,
+        x_hidden: torch.Tensor,
+        edge_index: torch.Tensor,
+        edge_attr: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        x_hidden = run_message_op(self.message_op, (x_hidden, x_hidden), edge_index, edge_attr)
+        x_hidden = run_message_op(
+            self.message_op, (x_hidden, x_hidden), edge_index, edge_attr
+        )
         return self.mlp(x_hidden)
 
 
@@ -278,7 +301,9 @@ class SingleNodesetDecoder(nn.Module):
     ) -> torch.Tensor:
         x_src = self.activation(self.embedder_src(x_src))
         x_dst = self.activation(self.embedder_dst(x_dst))
-        x_dst = self.activation(run_message_op(self.message_op, (x_src, x_dst), edge_index, edge_attr))
+        x_dst = self.activation(
+            run_message_op(self.message_op, (x_src, x_dst), edge_index, edge_attr)
+        )
         return self.out(x_dst)
 
 
@@ -319,8 +344,12 @@ class EncodeProcessDecodeModel(nn.Module):
             ("hidden", "to", "hidden"),
             ("hidden", "to", "data"),
         }
-        assert required_nodes.issubset(set(graph.node_types)), f"Graph missing nodes: {required_nodes - set(graph.node_types)}"
-        assert required_edges.issubset(set(graph.edge_types)), f"Graph missing edges: {required_edges - set(graph.edge_types)}"
+        assert required_nodes.issubset(
+            set(graph.node_types)
+        ), f"Graph missing nodes: {required_nodes - set(graph.node_types)}"
+        assert required_edges.issubset(
+            set(graph.edge_types)
+        ), f"Graph missing edges: {required_edges - set(graph.edge_types)}"
 
         data_feats = graph["data"].x
         assert (
@@ -343,13 +372,21 @@ class EncodeProcessDecodeModel(nn.Module):
             x_src=data_feats,
             x_dst=hidden_feats,
             edge_index=graph["data", "to", "hidden"].edge_index,
-            edge_attr=graph["data", "to", "hidden"].edge_attr if "edge_attr" in graph["data", "to", "hidden"] else None,
+            edge_attr=(
+                graph["data", "to", "hidden"].edge_attr
+                if "edge_attr" in graph["data", "to", "hidden"]
+                else None
+            ),
         )
 
         hidden_latent = self.processor(
             x_hidden=hidden_latent,
             edge_index=graph["hidden", "to", "hidden"].edge_index,
-            edge_attr=graph["hidden", "to", "hidden"].edge_attr if "edge_attr" in graph["hidden", "to", "hidden"] else None,
+            edge_attr=(
+                graph["hidden", "to", "hidden"].edge_attr
+                if "edge_attr" in graph["hidden", "to", "hidden"]
+                else None
+            ),
         )
 
         hidden_with_attrs = torch.cat([hidden_latent, graph["hidden"].x], dim=-1)
@@ -360,7 +397,11 @@ class EncodeProcessDecodeModel(nn.Module):
             x_src=hidden_with_attrs,
             x_dst=data_feats,
             edge_index=graph["hidden", "to", "data"].edge_index,
-            edge_attr=graph["hidden", "to", "data"].edge_attr if "edge_attr" in graph["hidden", "to", "data"] else None,
+            edge_attr=(
+                graph["hidden", "to", "data"].edge_attr
+                if "edge_attr" in graph["hidden", "to", "data"]
+                else None
+            ),
         )
 
         return data_out

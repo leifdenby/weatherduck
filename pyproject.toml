@@ -26,4 +26,11 @@ build-backend = "uv_build"
 dev = [
     "ipdb>=0.13.13",
     "ipykernel>=7.1.0",
+    "pre-commit>=4.5.0",
 ]
+
+[tool.isort]
+profile = "black"
+line_length = 88
+combine_as_imports = true
+known_first_party = ["weatherduck"]
