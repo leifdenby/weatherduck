@@ -27,6 +27,7 @@ dev = [
     "ipdb>=0.13.13",
     "ipykernel>=7.1.0",
     "pre-commit>=4.5.0",
+    "pytest>=9.0.2",
 ]
 
 [tool.isort]
