@@ -1,4 +1,4 @@
-from .weatherduck import autoregressive_experiment_factory, experiment_factory
+from .configs import autoregressive_experiment_factory, experiment_factory
 from loguru import logger
 
 

@@ -1,11 +1,10 @@
 import torch
-from torch_geometric.nn import SAGEConv
 
-from weatherduck.weatherduck import (
+from weatherduck import (
     WeatherDuckDataModule,
     build_encode_process_decode_model,
+    build_dummy_weather_graph,
 )
-from weatherduck.weatherduck import build_dummy_weather_graph  # re-exported but used explicitly
 
 
 def test_single_batch_forward():

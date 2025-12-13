@@ -16,15 +16,10 @@ Weatherduck was built to be a lightweight, hydra-free scaffold that mirrors [neu
 - Clarify feature bookkeeping (n_*_features + trainable features) and graph expectations in one place.
 
 ## What’s inside
-- `src/weatherduck/weatherduck.py`: Core implementation
-  - `EncodeProcessDecodeModel`: encode → processor → decode GNN working on `HeteroData` batches.
-  - `AutoRegressiveForecaster`: wraps a step-wise `EncodeProcessDecodeModel` to roll out multi-step forecasts over time.
-  - `SingleNodesetEncoder`, `Processor`, `SingleNodesetDecoder`: slim mapper blocks.
-  - `TrainableFeatures` + `TrainableFeatureManager`: learnable per-graph/node trainable features, shared across batches.
-  - `WeatherDuckDataModule`/`DummyWeatherDataset`: placeholder static graphs for single-step training.
-  - `TimeseriesWeatherDataModule`/`TimeseriesDummyWeatherDataset`: dummy timeseries graphs with node-first, time-last feature tensors for auto-regressive rollouts.
-  - `experiment_factory`: Fiddle config returning an `Experiment` (single-step).
-  - `autoregressive_experiment_factory`: Fiddle config for the autoregressive forecaster + timeseries data.
+- `src/weatherduck/step_predictor.py`: single-step components (`EncodeProcessDecodeModel`, `SingleNodesetEncoder`/`Processor`/`SingleNodesetDecoder`, trainable feature utilities, Lightning wrapper).
+- `src/weatherduck/ar_forecaster.py`: `AutoRegressiveForecaster` that rolls out multi-step predictions with a provided step predictor.
+- `src/weatherduck/data/dummy.py`: dummy datasets/datamodules for single-step and timeseries graphs plus `build_dummy_weather_graph`.
+- `src/weatherduck/configs.py`: Fiddle factories (`build_encode_process_decode_model`, `experiment_factory`, `autoregressive_experiment_factory`) and the `Experiment` dataclass.
 - `src/weatherduck/__init__.py`: Public exports.
 - `tests/test_weatherduck.py`: Smoke tests for single-step training.
 - `tests/test_autoregressive.py`: Smoke tests for autoregressive forecasting.
@@ -66,5 +61,5 @@ Shapes follow the convention: first dim = nodes, last dim = time (for sequences)
 
 ## Running tests
 ```bash
-uv run python -m pytest weatherduck/tests/test_weatherduck.py
+uv run pytest
 ```

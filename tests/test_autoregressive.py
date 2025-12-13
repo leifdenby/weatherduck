@@ -1,7 +1,6 @@
 import torch
-from torch_geometric.nn import SAGEConv
 
-from weatherduck.weatherduck import (
+from weatherduck import (
     AutoRegressiveForecaster,
     TimeseriesWeatherDataModule,
     build_encode_process_decode_model,
