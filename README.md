@@ -12,7 +12,7 @@ Weatherduck was built to be a lightweight, hydra-free scaffold that mirrors [neu
   - See [example notebook](notebooks/fiddle.ipynb) using fiddle to visualize a weatherduck experiment
 - Keep model architecture components small and override-friendly (for example with drop-in custom MessagePassing classes).
 - Exercise end-to-end Lightning + PyG training with dummy graphs so you can iterate on model code and configs before real data/graphs are ready.
-  - support for loading data from anemoi and neural-lam datasets is planned but not yet implemented.
+  - includes a NativeGridDataset-backed Anemoi datamodule for real datasets.
 - Clarify feature bookkeeping (n_*_features + trainable features) and graph expectations in one place.
 
 ## What’s inside
@@ -66,4 +66,65 @@ Shapes follow the convention: first dim = nodes, last dim = time (for sequences)
 ## Running tests
 ```bash
 uv run pytest
+```
+
+## Anemoi dataset config example (Fiddle)
+Below is a minimal, Fiddle-friendly dataset config focused only on the data
+portion of Anemoi's limited-area setup. It mirrors the `dataloader.dataset`
+shape from `anemoi-core/training/src/anemoi/training/config/lam.yaml` and the
+train/val/test split fields from `anemoi-core/training/src/anemoi/training/config/dataloader/native_grid.yaml`.
+
+```python
+import fiddle as fdl
+
+from weatherduck.data.anemoi import AnemoiNativeGridDataModule
+
+
+def build_anemoi_dataset_splits():
+    base_dataset = {
+        "cutout": [
+            {"dataset": "/path/to/main.zarr", "thinning": 4},
+            {"dataset": "/path/to/forcing.zarr"},
+        ],
+        "adjust": "all",
+        "min_distance_km": 0,
+    }
+    training = {
+        "dataset": base_dataset,
+        "start": 2020,
+        "end": 2020,
+        "frequency": "6h",
+        "drop": [],
+    }
+    validation = {
+        "dataset": base_dataset,
+        "start": 2021,
+        "end": 2021,
+        "frequency": "6h",
+        "drop": [],
+    }
+    test = {
+        "dataset": base_dataset,
+        "start": 2022,
+        "end": None,
+        "frequency": "6h",
+        "drop": [],
+    }
+    return training, validation, test
+
+
+training, validation, test = build_anemoi_dataset_splits()
+
+datamodule_cfg = fdl.Config(
+    AnemoiNativeGridDataModule,
+    graph_data=graph,
+    training=training,
+    validation=validation,
+    test=test,
+    data_frequency="6h",
+    data_timestep="6h",
+    multistep_input=1,
+    rollout=1,
+    validation_rollout=1,
+)
 ```

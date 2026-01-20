@@ -23,6 +23,13 @@ requires = ["uv_build>=0.9.16,<0.10.0"]
 build-backend = "uv_build"
 
 [dependency-groups]
+anemoi = [
+    "anemoi-datasets>=0.5.28",
+    "anemoi-graphs>=0.8.3",
+    "anemoi-training",
+    "einops>=0.8.1",
+    "trimesh>=4.11.1",
+]
 dev = [
     "ipdb>=0.13.13",
     "ipykernel>=7.1.0",
@@ -35,3 +42,7 @@ profile = "black"
 line_length = 88
 combine_as_imports = true
 known_first_party = ["weatherduck"]
+
+[tool.uv.sources]
+anemoi-graphs = { git = "https://github.com/ecmwf/anemoi-core", subdirectory = "graphs" }
+anemoi-training = { git = "https://github.com/ecmwf/anemoi-core", subdirectory = "training" }
