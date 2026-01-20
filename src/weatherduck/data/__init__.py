@@ -6,6 +6,11 @@ from .dummy import (
     build_dummy_weather_graph,
 )
 
+try:
+    from .anemoi import AnemoiWeatherDataModule
+except ModuleNotFoundError:
+    AnemoiWeatherDataModule = None
+
 __all__ = [
     "DummyWeatherDataset",
     "TimeseriesDummyWeatherDataset",
@@ -13,3 +18,5 @@ __all__ = [
     "TimeseriesWeatherDataModule",
     "build_dummy_weather_graph",
 ]
+if AnemoiWeatherDataModule is not None:
+    __all__.append("AnemoiWeatherDataModule")

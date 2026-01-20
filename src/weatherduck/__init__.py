@@ -6,6 +6,7 @@ from .configs import (
     experiment_factory,
 )
 from .data import (
+    AnemoiWeatherDataModule,
     DummyWeatherDataset,
     TimeseriesDummyWeatherDataset,
     TimeseriesWeatherDataModule,
@@ -45,3 +46,5 @@ __all__ = [
     "make_mlp",
     "main",
 ]
+if AnemoiWeatherDataModule is not None:
+    __all__.append("AnemoiWeatherDataModule")

@@ -2,3 +2,7 @@
 uv.lock
 .python-version
 lightning_logs/
+
+anemoi-core/
+anemoi-datasets/
+neural-lam/
