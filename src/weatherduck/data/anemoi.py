@@ -7,6 +7,7 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 from anemoi.datasets import open_dataset
+from anemoi.graphs.create import GraphBuilder
 from anemoi.training.data.grid_indices import BaseGridIndices, FullGrid
 from anemoi.training.utils.usable_indices import get_usable_indices
 from anemoi.utils.dates import frequency_to_seconds
@@ -16,6 +17,32 @@ from torch_geometric.data import HeteroData
 from torch_geometric.loader import DataLoader as GeoDataLoader
 
 __all__ = ["AnemoiNativeGridDataModule"]
+
+
+class _CachedGraphBuilder:
+    """Cache graph creation for reuse across datasets.
+
+    Parameters
+    ----------
+    graph_builder : Any
+        Graph builder that provides a create() method.
+    """
+
+    def __init__(self, graph_builder: GraphBuilder) -> None:
+        self._graph_builder = graph_builder
+        self._graph: HeteroData | None = None
+
+    def create(self) -> HeteroData:
+        """Build or return the cached graph.
+
+        Returns
+        -------
+        HeteroData
+            Cached graph instance.
+        """
+        if self._graph is None:
+            self._graph = self._graph_builder.create()
+        return self._graph
 
 
 class UnshardedNativeGridDataset(IterableDataset):
@@ -211,7 +238,7 @@ class _NativeGridGraphDataset(IterableDataset):
         self,
         *,
         base_dataset: IterableDataset,
-        graph_data: HeteroData,
+        graph_builder: GraphBuilder,
         name_to_index: dict[str, int],
         input_time_index: int,
         target_time_index: int,
@@ -222,6 +249,7 @@ class _NativeGridGraphDataset(IterableDataset):
         use_hidden_node_features: bool,
         input_variable_names: Sequence[str] | None,
         output_variable_names: Sequence[str] | None,
+        ar_steps: int | None,
     ) -> None:
         """Initialize the graph-wrapping dataset.
 
@@ -230,8 +258,8 @@ class _NativeGridGraphDataset(IterableDataset):
         base_dataset : IterableDataset
             NativeGridDataset-like iterable yielding tensors shaped
             [time, ensemble, nodes, variables].
-        graph_data : HeteroData
-            Template graph to clone and populate with data.x/data.y.
+        graph_builder : GraphBuilder
+            Graph builder used to construct the template graph.
         name_to_index : dict[str, int]
             Mapping from variable names to column indices.
         input_time_index : int
@@ -252,10 +280,12 @@ class _NativeGridGraphDataset(IterableDataset):
             Optional variable names to select for input features.
         output_variable_names : Sequence[str] | None
             Optional variable names to select for target features.
+        ar_steps : int | None
+            If provided, emit autoregressive fields with this rollout length.
         """
         super().__init__()
         self.base_dataset = base_dataset
-        self.graph_data = graph_data
+        self.graph_data = graph_builder.create()
         self.name_to_index = name_to_index
         self.input_time_index = input_time_index
         self.target_time_index = target_time_index
@@ -266,6 +296,7 @@ class _NativeGridGraphDataset(IterableDataset):
         self.use_hidden_node_features = use_hidden_node_features
         self.input_variable_names = input_variable_names
         self.output_variable_names = output_variable_names
+        self.ar_steps = ar_steps
 
     def per_worker_init(self, n_workers: int, worker_id: int) -> None:
         """Forward worker initialization to the wrapped dataset.
@@ -328,10 +359,23 @@ class _NativeGridGraphDataset(IterableDataset):
                 raise ValueError(
                     "Expected Anemoi dataset sample to have shape [time, ensemble, nodes, variables]."
                 )
-            input_slice = sample[self.input_time_index, self.ensemble_index]
-            target_slice = sample[self.target_time_index, self.ensemble_index]
-            data_x = input_slice[:, input_vars]
-            data_y = target_slice[:, output_vars]
+            if self.ar_steps is None:
+                input_slice = sample[self.input_time_index, self.ensemble_index]
+                target_slice = sample[self.target_time_index, self.ensemble_index]
+                data_x = input_slice[:, input_vars]
+                data_y = target_slice[:, output_vars]
+            else:
+                required_steps = 2 + self.ar_steps
+                if sample.shape[0] < required_steps:
+                    raise ValueError(
+                        "Autoregressive mode requires at least "
+                        f"{required_steps} time steps, got {sample.shape[0]}."
+                    )
+                time_slice = sample[:required_steps, self.ensemble_index]
+                init_states = time_slice[:2, :, input_vars]  # [2, N, F]
+                target_seq = time_slice[2:, :, output_vars]  # [T, N, F]
+                data_x = init_states[-1]
+                data_y = target_seq.permute(1, 2, 0)
 
             graph = self.graph_data.clone()
             if graph[self.data_node_type].num_nodes != data_x.shape[0]:
@@ -344,6 +388,14 @@ class _NativeGridGraphDataset(IterableDataset):
                 data_x = torch.cat([base_feats, data_x], dim=-1)
             graph[self.data_node_type].x = data_x
             graph[self.data_node_type].y = data_y
+            if self.ar_steps is not None:
+                graph[self.data_node_type].x_init_states = init_states.permute(1, 2, 0)
+                graph[self.data_node_type].x_forcing = torch.zeros(
+                    data_x.shape[0], 0, self.ar_steps, device=data_x.device
+                )
+                graph[self.data_node_type].x_static = torch.zeros(
+                    data_x.shape[0], 0, device=data_x.device
+                )
 
             if not self.use_hidden_node_features:
                 num_hidden = graph[self.hidden_node_type].num_nodes
@@ -366,7 +418,7 @@ class AnemoiNativeGridDataModule(pl.LightningDataModule):
     def __init__(
         self,
         *,
-        graph_data: HeteroData,
+        graph_builder: GraphBuilder,
         training: dict,
         validation: dict,
         test: dict,
@@ -392,13 +444,14 @@ class AnemoiNativeGridDataModule(pl.LightningDataModule):
         use_hidden_node_features: bool = True,
         input_variable_names: Optional[Sequence[str]] = None,
         output_variable_names: Optional[Sequence[str]] = None,
+        ar_steps: Optional[int] = None,
     ) -> None:
         """Initialize the NativeGrid-backed datamodule.
 
         Parameters
         ----------
-        graph_data : HeteroData
-            Template graph for building WeatherDuck batches.
+        graph_builder : GraphBuilder
+            Graph builder used to construct WeatherDuck batches.
         training : dict
             Anemoi dataset config for training split.
         validation : dict
@@ -449,9 +502,11 @@ class AnemoiNativeGridDataModule(pl.LightningDataModule):
             Variable names to select for input features.
         output_variable_names : Optional[Sequence[str]], optional
             Variable names to select for target features.
+        ar_steps : Optional[int], optional
+            If set, emit autoregressive fields with this rollout length.
         """
         super().__init__()
-        self.graph_data = graph_data
+        self.graph_builder = _CachedGraphBuilder(graph_builder)
         self.training_cfg = training
         self.validation_cfg = validation
         self.test_cfg = test
@@ -487,6 +542,18 @@ class AnemoiNativeGridDataModule(pl.LightningDataModule):
         self.use_hidden_node_features = use_hidden_node_features
         self.input_variable_names = input_variable_names
         self.output_variable_names = output_variable_names
+        self.ar_steps = ar_steps
+
+    @property
+    def _graph_data(self) -> HeteroData:
+        """Return the cached graph data built from the graph builder.
+
+        Returns
+        -------
+        HeteroData
+            Cached graph instance.
+        """
+        return self.graph_builder.create()
 
     @property
     def statistics(self) -> dict:
@@ -563,9 +630,14 @@ class AnemoiNativeGridDataModule(pl.LightningDataModule):
         """
         if self.relative_date_indices is not None:
             return list(self.relative_date_indices)
-        rollout = max(self.rollout, val_rollout)
+        if self.ar_steps is not None:
+            rollout = max(self.ar_steps, val_rollout)
+            required_steps = 2 + rollout
+        else:
+            rollout = max(self.rollout, val_rollout)
+            required_steps = self.multistep_input + rollout
         timeincrement = self._timeincrement()
-        return [timeincrement * step for step in range(self.multistep_input + rollout)]
+        return [timeincrement * step for step in range(required_steps)]
 
     @property
     def _grid_indices(self) -> BaseGridIndices:
@@ -583,7 +655,7 @@ class AnemoiNativeGridDataModule(pl.LightningDataModule):
             )
         else:
             grid_indices = self.grid_indices
-        grid_indices.setup(self.graph_data)
+        grid_indices.setup(self._graph_data)
         return grid_indices
 
     def _get_dataset(
@@ -646,7 +718,7 @@ class AnemoiNativeGridDataModule(pl.LightningDataModule):
 
         self.train_ds = _NativeGridGraphDataset(
             base_dataset=self.ds_train,
-            graph_data=self.graph_data,
+            graph_builder=self.graph_builder,
             name_to_index=self.ds_train.name_to_index,
             input_time_index=self.input_time_index,
             target_time_index=self.target_time_index,
@@ -657,10 +729,11 @@ class AnemoiNativeGridDataModule(pl.LightningDataModule):
             use_hidden_node_features=self.use_hidden_node_features,
             input_variable_names=self.input_variable_names,
             output_variable_names=self.output_variable_names,
+            ar_steps=self.ar_steps,
         )
         self.val_ds = _NativeGridGraphDataset(
             base_dataset=self.ds_valid,
-            graph_data=self.graph_data,
+            graph_builder=self.graph_builder,
             name_to_index=self.ds_train.name_to_index,
             input_time_index=self.input_time_index,
             target_time_index=self.target_time_index,
@@ -671,10 +744,11 @@ class AnemoiNativeGridDataModule(pl.LightningDataModule):
             use_hidden_node_features=self.use_hidden_node_features,
             input_variable_names=self.input_variable_names,
             output_variable_names=self.output_variable_names,
+            ar_steps=self.ar_steps,
         )
         self.test_ds = _NativeGridGraphDataset(
             base_dataset=self.ds_test,
-            graph_data=self.graph_data,
+            graph_builder=self.graph_builder,
             name_to_index=self.ds_train.name_to_index,
             input_time_index=self.input_time_index,
             target_time_index=self.target_time_index,
@@ -685,6 +759,7 @@ class AnemoiNativeGridDataModule(pl.LightningDataModule):
             use_hidden_node_features=self.use_hidden_node_features,
             input_variable_names=self.input_variable_names,
             output_variable_names=self.output_variable_names,
+            ar_steps=self.ar_steps,
         )
 
     def _get_dataloader(self, ds: IterableDataset, stage: str) -> GeoDataLoader:

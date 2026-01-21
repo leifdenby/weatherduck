@@ -1,6 +1,6 @@
 from loguru import logger
 
-from .configs import autoregressive_experiment_factory
+from .configs.experiment.dummy import autoregressive_experiment_factory
 
 
 def main():

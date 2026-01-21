@@ -11,7 +11,7 @@ dependencies = [
     "torch>=2.9.1",
     "fiddle>=0.3.0",
     "pytorch-lightning>=2.6.0",
-    "torch-geometric>=2.7.0",
+    "torch-geometric>=2.3.1",
     "loguru>=0.7.3",
 ]
 
@@ -43,6 +43,12 @@ line_length = 88
 combine_as_imports = true
 known_first_party = ["weatherduck"]
 
+[tool.uv.workspace]
+members = [
+    "anemoi-core/training",
+    "anemoi-core/graphs",
+]
+
 [tool.uv.sources]
-anemoi-training = { git = "https://github.com/ecmwf/anemoi-core", subdirectory = "training" }
-anemoi-graphs = { git = "https://github.com/radiradev/anemoi-core", subdirectory = "graphs" }
+anemoi-training = { workspace = true }
+anemoi-graphs = { workspace = true }
