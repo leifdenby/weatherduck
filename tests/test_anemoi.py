@@ -1,22 +1,22 @@
 import os
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
+import fiddle as fdl
 import pytest
 import pytorch_lightning as pl
 import torch
+from anemoi.graphs.edges import CutOffEdges, KNNEdges, MultiScaleEdges
+from anemoi.graphs.edges.attributes import EdgeDirection, EdgeLength
+from anemoi.graphs.nodes import AnemoiDatasetNodes, LimitedAreaTriNodes
+from anemoi.graphs.nodes.attributes import CutOutMask
 from loguru import logger
 from torch import nn
 from torch_geometric.data import HeteroData
 
 from weatherduck import AutoRegressiveForecaster, build_encode_process_decode_model
 from weatherduck.data.anemoi import AnemoiNativeGridDataModule
-
-try:
-    from anemoi.graphs.create import GraphCreator
-    from anemoi.utils.config import DotDict
-except ImportError:
-    pytest.skip("Anemoi package is not installed.", allow_module_level=True)
 
 
 def _load_or_build_graph(
@@ -64,6 +64,121 @@ def _load_or_build_graph(
     return graph
 
 
+@dataclass
+class AnemoiGraph:
+    data_nodes: AnemoiDatasetNodes
+    hidden_nodes: LimitedAreaTriNodes
+    cutout_mask: CutOutMask
+    edge_length: EdgeLength
+    edge_dirs: EdgeDirection
+    dh_edges: CutOffEdges
+    hh_edges: MultiScaleEdges
+    hd_edges: KNNEdges
+
+    def build(self) -> HeteroData:
+        graph = HeteroData()
+        graph = self.data_nodes.register_nodes(graph)
+        graph["data"]["cutout_mask"] = self.cutout_mask.compute(graph, "data")
+
+        graph = self.hidden_nodes.register_nodes(graph)
+
+        graph = self.dh_edges.update_graph(graph, attrs_config=None)
+        graph["data", "to", "hidden"]["edge_length"] = self.edge_length(
+            x=(graph["data"], graph["hidden"]),
+            edge_index=graph["data", "to", "hidden"].edge_index,
+        )
+        graph["data", "to", "hidden"]["edge_dirs"] = self.edge_dirs(
+            x=(graph["data"], graph["hidden"]),
+            edge_index=graph["data", "to", "hidden"].edge_index,
+        )
+
+        graph = self.hh_edges.update_graph(graph, attrs_config=None)
+        graph["hidden", "to", "hidden"]["edge_length"] = self.edge_length(
+            x=(graph["hidden"], graph["hidden"]),
+            edge_index=graph["hidden", "to", "hidden"].edge_index,
+        )
+        graph["hidden", "to", "hidden"]["edge_dirs"] = self.edge_dirs(
+            x=(graph["hidden"], graph["hidden"]),
+            edge_index=graph["hidden", "to", "hidden"].edge_index,
+        )
+
+        graph = self.hd_edges.update_graph(graph, attrs_config=None)
+        graph["hidden", "to", "data"]["edge_length"] = self.edge_length(
+            x=(graph["hidden"], graph["data"]),
+            edge_index=graph["hidden", "to", "data"].edge_index,
+        )
+        graph["hidden", "to", "data"]["edge_dirs"] = self.edge_dirs(
+            x=(graph["hidden"], graph["data"]),
+            edge_index=graph["hidden", "to", "data"].edge_index,
+        )
+        return graph
+
+
+def build_graph_config(
+    dataset_config: dict,
+    *,
+    resolution: int,
+    margin_radius_km: int,
+    cutoff_factor: float,
+    num_nearest_neighbours: int,
+) -> fdl.Config:
+    """
+    Build a Fiddle config for a limited-area AnemoiGraph.
+
+    Parameters
+    ----------
+    dataset_config : dict
+        Dataset config for AnemoiDatasetNodes.
+    resolution : int
+        Hidden mesh resolution for LimitedAreaTriNodes.
+    margin_radius_km : int
+        Margin radius for the limited-area mask.
+    cutoff_factor : float
+        Cutoff factor for data->hidden edges.
+    num_nearest_neighbours : int
+        KNN neighbours for hidden->data edges.
+
+    Returns
+    -------
+    fdl.Config
+        Config that builds an AnemoiGraph instance.
+    """
+    return fdl.Config(
+        AnemoiGraph,
+        data_nodes=fdl.Config(AnemoiDatasetNodes, name="data", dataset=dataset_config),
+        hidden_nodes=fdl.Config(
+            LimitedAreaTriNodes,
+            name="hidden",
+            resolution=resolution,
+            reference_node_name="data",
+            mask_attr_name="cutout_mask",
+            margin_radius_km=margin_radius_km,
+        ),
+        cutout_mask=fdl.Config(CutOutMask),
+        edge_length=fdl.Config(EdgeLength, norm="unit-std"),
+        edge_dirs=fdl.Config(EdgeDirection, norm="unit-std"),
+        dh_edges=fdl.Config(
+            CutOffEdges,
+            source_name="data",
+            target_name="hidden",
+            cutoff_factor=cutoff_factor,
+        ),
+        hh_edges=fdl.Config(
+            MultiScaleEdges,
+            source_name="hidden",
+            target_name="hidden",
+            x_hops=1,
+            scale_resolutions=resolution,
+        ),
+        hd_edges=fdl.Config(
+            KNNEdges,
+            source_name="hidden",
+            target_name="data",
+            num_nearest_neighbours=num_nearest_neighbours,
+        ),
+    )
+
+
 def test_build_limited_area_anemoi_graph_example():
     """
     Build a minimal Anemoi graph matching WeatherDuck expectations.
@@ -88,114 +203,25 @@ def test_build_limited_area_anemoi_graph_example():
 
     dataset_config = {
         "cutout": [
-            {"dataset": dataset_path, "thinning": 4},
+            {"dataset": dataset_path, "thinning": 100},
             {"dataset": forcing_path},
         ],
         "adjust": "all",
         "min_distance_km": 0,
     }
 
-    graph_config = {
-        "overwrite": True,
-        "data": "data",
-        "hidden": "hidden",
-        "nodes": {
-            "data": {
-                "node_builder": {
-                    "_target_": "anemoi.graphs.nodes.AnemoiDatasetNodes",
-                    "dataset": dataset_config,
-                },
-                "attributes": {
-                    "cutout_mask": {
-                        "_target_": "anemoi.graphs.nodes.attributes.CutOutMask"
-                    },
-                    "area_weight": {
-                        "_target_": "anemoi.graphs.nodes.attributes.MaskedPlanarAreaWeights",
-                        "mask_node_attr_name": "cutout_mask",
-                        "norm": "unit-max",
-                    },
-                },
-            },
-            "hidden": {
-                "node_builder": {
-                    "_target_": "anemoi.graphs.nodes.LimitedAreaTriNodes",
-                    "resolution": 6,
-                    "reference_node_name": "data",
-                    "mask_attr_name": "cutout_mask",
-                    "margin_radius_km": 10,
-                },
-                "attributes": {},
-            },
-        },
-        "edges": [
-            {
-                "source_name": "data",
-                "target_name": "hidden",
-                "edge_builders": [
-                    {
-                        "_target_": "anemoi.graphs.edges.CutOffEdges",
-                        "cutoff_factor": 0.6,
-                    }
-                ],
-                "attributes": {
-                    "edge_length": {
-                        "_target_": "anemoi.graphs.edges.attributes.EdgeLength",
-                        "norm": "unit-std",
-                    },
-                    "edge_dirs": {
-                        "_target_": "anemoi.graphs.edges.attributes.EdgeDirection",
-                        "norm": "unit-std",
-                    },
-                },
-            },
-            {
-                "source_name": "hidden",
-                "target_name": "hidden",
-                "edge_builders": [
-                    {
-                        "_target_": "anemoi.graphs.edges.MultiScaleEdges",
-                        "x_hops": 1,
-                        "scale_resolutions": 6,
-                    }
-                ],
-                "attributes": {
-                    "edge_length": {
-                        "_target_": "anemoi.graphs.edges.attributes.EdgeLength",
-                        "norm": "unit-std",
-                    },
-                    "edge_dirs": {
-                        "_target_": "anemoi.graphs.edges.attributes.EdgeDirection",
-                        "norm": "unit-std",
-                    },
-                },
-            },
-            {
-                "source_name": "hidden",
-                "target_name": "data",
-                "edge_builders": [
-                    {
-                        "_target_": "anemoi.graphs.edges.KNNEdges",
-                        "num_nearest_neighbours": 3,
-                    }
-                ],
-                "attributes": {
-                    "edge_length": {
-                        "_target_": "anemoi.graphs.edges.attributes.EdgeLength",
-                        "norm": "unit-std",
-                    },
-                    "edge_dirs": {
-                        "_target_": "anemoi.graphs.edges.attributes.EdgeDirection",
-                        "norm": "unit-std",
-                    },
-                },
-            },
-        ],
-    }
-
     graph_cache = os.environ.get("WD_CACHE_GRAPH_IN_TESTS")
     graph = _load_or_build_graph(
         graph_cache,
-        lambda: GraphCreator(config=DotDict(graph_config)).create(),
+        lambda: fdl.build(
+            build_graph_config(
+                dataset_config,
+                resolution=6,
+                margin_radius_km=10,
+                cutoff_factor=0.6,
+                num_nearest_neighbours=3,
+            )
+        ).build(),
         label="graph_example",
     )
     assert isinstance(graph, HeteroData)
@@ -244,75 +270,18 @@ def test_anemoi_datamodule_autoregressive_train_one_epoch():
         "drop": [],
     }
 
-    graph_config = {
-        "overwrite": True,
-        "data": "data",
-        "hidden": "hidden",
-        "nodes": {
-            "data": {
-                "node_builder": {
-                    "_target_": "anemoi.graphs.nodes.AnemoiDatasetNodes",
-                    "dataset": dataset_config,
-                },
-                "attributes": {
-                    "cutout_mask": {
-                        "_target_": "anemoi.graphs.nodes.attributes.CutOutMask"
-                    },
-                },
-            },
-            "hidden": {
-                "node_builder": {
-                    "_target_": "anemoi.graphs.nodes.LimitedAreaTriNodes",
-                    "resolution": 2,
-                    "reference_node_name": "data",
-                    "mask_attr_name": "cutout_mask",
-                    "margin_radius_km": 10,
-                },
-                "attributes": {},
-            },
-        },
-        "edges": [
-            {
-                "source_name": "data",
-                "target_name": "hidden",
-                "edge_builders": [
-                    {
-                        "_target_": "anemoi.graphs.edges.CutOffEdges",
-                        "cutoff_factor": 0.6,
-                    }
-                ],
-                "attributes": {},
-            },
-            {
-                "source_name": "hidden",
-                "target_name": "hidden",
-                "edge_builders": [
-                    {
-                        "_target_": "anemoi.graphs.edges.MultiScaleEdges",
-                        "x_hops": 1,
-                        "scale_resolutions": 2,
-                    }
-                ],
-                "attributes": {},
-            },
-            {
-                "source_name": "hidden",
-                "target_name": "data",
-                "edge_builders": [
-                    {
-                        "_target_": "anemoi.graphs.edges.KNNEdges",
-                        "num_nearest_neighbours": 3,
-                    }
-                ],
-                "attributes": {},
-            },
-        ],
-    }
-
     graph_cache = os.environ.get("WD_CACHE_GRAPH_IN_TESTS")
     graph = _load_or_build_graph(
         graph_cache,
-        lambda: GraphCreator(config=DotDict(graph_config)).create(),
+        lambda: fdl.build(
+            build_graph_config(
+                dataset_config,
+                resolution=2,
+                margin_radius_km=10,
+                cutoff_factor=0.6,
+                num_nearest_neighbours=3,
+            )
+        ).build(),
         label="graph_train",
     )
 
