@@ -1,12 +1,13 @@
 import os
 import time
-from dataclasses import dataclass
 from pathlib import Path
 
 import fiddle as fdl
+import fiddle.experimental.auto_config
 import pytest
 import pytorch_lightning as pl
 import torch
+from anemoi.graphs.create import GraphBuilder
 from anemoi.graphs.edges import CutOffEdges, KNNEdges, MultiScaleEdges
 from anemoi.graphs.edges.attributes import EdgeDirection, EdgeLength
 from anemoi.graphs.nodes import AnemoiDatasetNodes, LimitedAreaTriNodes
@@ -64,66 +65,17 @@ def _load_or_build_graph(
     return graph
 
 
-@dataclass
-class AnemoiGraph:
-    data_nodes: AnemoiDatasetNodes
-    hidden_nodes: LimitedAreaTriNodes
-    cutout_mask: CutOutMask
-    edge_length: EdgeLength
-    edge_dirs: EdgeDirection
-    dh_edges: CutOffEdges
-    hh_edges: MultiScaleEdges
-    hd_edges: KNNEdges
-
-    def build(self) -> HeteroData:
-        graph = HeteroData()
-        graph = self.data_nodes.register_nodes(graph)
-        graph["data"]["cutout_mask"] = self.cutout_mask.compute(graph, "data")
-
-        graph = self.hidden_nodes.register_nodes(graph)
-
-        graph = self.dh_edges.update_graph(graph, attrs_config=None)
-        graph["data", "to", "hidden"]["edge_length"] = self.edge_length(
-            x=(graph["data"], graph["hidden"]),
-            edge_index=graph["data", "to", "hidden"].edge_index,
-        )
-        graph["data", "to", "hidden"]["edge_dirs"] = self.edge_dirs(
-            x=(graph["data"], graph["hidden"]),
-            edge_index=graph["data", "to", "hidden"].edge_index,
-        )
-
-        graph = self.hh_edges.update_graph(graph, attrs_config=None)
-        graph["hidden", "to", "hidden"]["edge_length"] = self.edge_length(
-            x=(graph["hidden"], graph["hidden"]),
-            edge_index=graph["hidden", "to", "hidden"].edge_index,
-        )
-        graph["hidden", "to", "hidden"]["edge_dirs"] = self.edge_dirs(
-            x=(graph["hidden"], graph["hidden"]),
-            edge_index=graph["hidden", "to", "hidden"].edge_index,
-        )
-
-        graph = self.hd_edges.update_graph(graph, attrs_config=None)
-        graph["hidden", "to", "data"]["edge_length"] = self.edge_length(
-            x=(graph["hidden"], graph["data"]),
-            edge_index=graph["hidden", "to", "data"].edge_index,
-        )
-        graph["hidden", "to", "data"]["edge_dirs"] = self.edge_dirs(
-            x=(graph["hidden"], graph["data"]),
-            edge_index=graph["hidden", "to", "data"].edge_index,
-        )
-        return graph
-
-
-def build_graph_config(
+@fiddle.experimental.auto_config.auto_config
+def build_graph_builder(
     dataset_config: dict,
     *,
     resolution: int,
     margin_radius_km: int,
     cutoff_factor: float,
     num_nearest_neighbours: int,
-) -> fdl.Config:
+) -> GraphBuilder:
     """
-    Build a Fiddle config for a limited-area AnemoiGraph.
+    Build a GraphBuilder for a limited-area Anemoi graph.
 
     Parameters
     ----------
@@ -140,43 +92,49 @@ def build_graph_config(
 
     Returns
     -------
-    fdl.Config
-        Config that builds an AnemoiGraph instance.
+    GraphBuilder
+        GraphBuilder instance configured with nodes and edges.
     """
-    return fdl.Config(
-        AnemoiGraph,
-        data_nodes=fdl.Config(AnemoiDatasetNodes, name="data", dataset=dataset_config),
-        hidden_nodes=fdl.Config(
-            LimitedAreaTriNodes,
+    edge_attrs = [
+        EdgeLength(name="edge_length", norm="unit-std"),
+        EdgeDirection(name="edge_dirs", norm="unit-std"),
+    ]
+    nodes = [
+        AnemoiDatasetNodes(
+            name="data",
+            dataset=dataset_config,
+            attributes=[CutOutMask(name="cutout_mask")],
+        ),
+        LimitedAreaTriNodes(
             name="hidden",
             resolution=resolution,
             reference_node_name="data",
             mask_attr_name="cutout_mask",
             margin_radius_km=margin_radius_km,
         ),
-        cutout_mask=fdl.Config(CutOutMask),
-        edge_length=fdl.Config(EdgeLength, norm="unit-std"),
-        edge_dirs=fdl.Config(EdgeDirection, norm="unit-std"),
-        dh_edges=fdl.Config(
-            CutOffEdges,
+    ]
+    edges = [
+        CutOffEdges(
             source_name="data",
             target_name="hidden",
             cutoff_factor=cutoff_factor,
+            attributes=edge_attrs,
         ),
-        hh_edges=fdl.Config(
-            MultiScaleEdges,
+        MultiScaleEdges(
             source_name="hidden",
             target_name="hidden",
             x_hops=1,
             scale_resolutions=resolution,
+            attributes=edge_attrs,
         ),
-        hd_edges=fdl.Config(
-            KNNEdges,
+        KNNEdges(
             source_name="hidden",
             target_name="data",
             num_nearest_neighbours=num_nearest_neighbours,
+            attributes=edge_attrs,
         ),
-    )
+    ]
+    return GraphBuilder(nodes=nodes, edges=edges)
 
 
 def test_build_limited_area_anemoi_graph_example():
@@ -211,17 +169,18 @@ def test_build_limited_area_anemoi_graph_example():
     }
 
     graph_cache = os.environ.get("WD_CACHE_GRAPH_IN_TESTS")
+    graph_creator = fdl.build(
+        build_graph_builder(
+            dataset_config,
+            resolution=6,
+            margin_radius_km=10,
+            cutoff_factor=0.6,
+            num_nearest_neighbours=3,
+        )
+    )
     graph = _load_or_build_graph(
         graph_cache,
-        lambda: fdl.build(
-            build_graph_config(
-                dataset_config,
-                resolution=6,
-                margin_radius_km=10,
-                cutoff_factor=0.6,
-                num_nearest_neighbours=3,
-            )
-        ).build(),
+        graph_creator.create,
         label="graph_example",
     )
     assert isinstance(graph, HeteroData)
@@ -271,17 +230,18 @@ def test_anemoi_datamodule_autoregressive_train_one_epoch():
     }
 
     graph_cache = os.environ.get("WD_CACHE_GRAPH_IN_TESTS")
+    graph_creator = fdl.build(
+        build_graph_builder(
+            dataset_config,
+            resolution=2,
+            margin_radius_km=10,
+            cutoff_factor=0.6,
+            num_nearest_neighbours=3,
+        )
+    )
     graph = _load_or_build_graph(
         graph_cache,
-        lambda: fdl.build(
-            build_graph_config(
-                dataset_config,
-                resolution=2,
-                margin_radius_km=10,
-                cutoff_factor=0.6,
-                num_nearest_neighbours=3,
-            )
-        ).build(),
+        graph_creator.create,
         label="graph_train",
     )
 
