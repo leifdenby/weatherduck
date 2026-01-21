@@ -27,17 +27,6 @@ __all__ = [
 ]
 
 
-@dataclass
-class Experiment:
-    model: pl.LightningModule
-    data: pl.LightningDataModule
-    trainer: pl.Trainer
-
-    def run(self) -> None:
-        self.trainer.fit(self.model, datamodule=self.data)
-        self.trainer.test(self.model, datamodule=self.data)
-
-
 @fiddle.experimental.auto_config.auto_config
 def build_encode_process_decode_model(
     *,
@@ -48,8 +37,18 @@ def build_encode_process_decode_model(
     n_hidden_trainable_features: int,
     hidden_dim: int,
 ) -> EncodeProcessDecodeModel:
-    """
-    Factory to build an EncodeProcessDecodeModel with SAGEConv components.
+    """Build an Encode-Process-Decode model with SAGEConv components.
+
+    Parameters:
+        n_input_data_features: Number of input data features for each node.
+        n_output_data_features: Number of output data features to predict.
+        n_hidden_data_features: Number of hidden data features per node.
+        n_input_trainable_features: Number of trainable input features per node.
+        n_hidden_trainable_features: Number of hidden trainable features per node.
+        hidden_dim: Hidden dimension used across encoder/processor/decoder.
+
+    Returns:
+        EncodeProcessDecodeModel configured with the requested dimensions.
     """
     encoder = SingleNodesetEncoder(
         embedder_src=make_mlp(
@@ -95,11 +94,32 @@ def build_encode_process_decode_model(
     )
 
 
+@dataclass
+class Experiment:
+    pl_module: pl.LightningModule
+    data: pl.LightningDataModule
+    trainer: pl.Trainer
+
+    def run(self) -> None:
+        """Train and evaluate the configured model.
+
+        Returns:
+            None.
+        """
+        self.trainer.fit(self.pl_module, datamodule=self.data)
+        self.trainer.test(self.pl_module, datamodule=self.data)
+
+
 @fiddle.experimental.auto_config.auto_config
 def experiment_factory() -> Experiment:
     """
-    Build a Fiddle config graph that mirrors the Hydra GNN setup
-    (encode -> process -> decode) but runs with dummy graph/data.
+    Build a experiment object for a dummy single-step weather prediction task.
+    This is decorated as a Fiddle auto_config function, so that one can create
+    a buildable config for the experiment where experiment setup can
+    overridden.
+
+    Returns:
+        Experiment containing the model, data module, and trainer config.
     """
     n_input_data_features = 8
     n_output_data_features = 8
@@ -137,7 +157,7 @@ def experiment_factory() -> Experiment:
     )
 
     return Experiment(
-        model=lit_module,
+        pl_module=lit_module,
         data=data,
         trainer=trainer,
     )
@@ -145,9 +165,10 @@ def experiment_factory() -> Experiment:
 
 @fiddle.experimental.auto_config.auto_config
 def autoregressive_experiment_factory() -> Experiment:
-    """
-    Build a Fiddle config graph for the autoregressive forecaster with
-    timeseries dummy data.
+    """Build a Fiddle config graph for the autoregressive dummy experiment.
+
+    Returns:
+        Experiment containing the autoregressive model, data, and trainer config.
     """
     ar_steps = 3
     n_state_features = 6
@@ -198,7 +219,7 @@ def autoregressive_experiment_factory() -> Experiment:
     )
 
     return Experiment(
-        model=lit_module,
+        pl_module=lit_module,
         data=data,
         trainer=trainer,
     )
