@@ -2,6 +2,7 @@ import torch
 
 from weatherduck import (
     AutoRegressiveForecaster,
+    DummyGraphBuilder,
     TimeseriesWeatherDataModule,
     build_encode_process_decode_model,
 )
@@ -24,6 +25,7 @@ def test_autoregressive_forecaster_runs():
         n_static_features=1,
         ar_steps=ar_steps,
         n_hidden_data_features=n_hidden_data_features,
+        graph_builder=DummyGraphBuilder(),
         batch_size=2,
         n_unique_graphs=2,
     )

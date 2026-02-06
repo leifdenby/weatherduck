@@ -3,7 +3,6 @@ from .dummy import (
     TimeseriesDummyWeatherDataset,
     TimeseriesWeatherDataModule,
     WeatherDuckDataModule,
-    build_dummy_weather_graph,
 )
 
 __all__ = [
@@ -11,5 +10,4 @@ __all__ = [
     "TimeseriesDummyWeatherDataset",
     "WeatherDuckDataModule",
     "TimeseriesWeatherDataModule",
-    "build_dummy_weather_graph",
 ]

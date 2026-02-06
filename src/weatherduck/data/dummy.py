@@ -1,51 +1,32 @@
 from typing import Optional
 
+import numpy as np
 import pytorch_lightning as pl
 import torch
 from torch.utils.data import Dataset
 from torch_geometric.data import Batch, HeteroData
 from torch_geometric.loader import DataLoader as GeoDataLoader
 
+from ..graphs import GraphBuilder
 
-def build_dummy_weather_graph(
-    num_data_nodes: int = 64,
-    num_hidden_nodes: int = 32,
-    edge_attr_dim: int = 2,
-    n_data_node_features: int = 0,
-    n_hidden_node_features: int = 0,
-) -> HeteroData:
+
+def _make_grid_coords(num_nodes: int) -> np.ndarray:
+    """Create a square-ish grid of coordinates.
+
+    Parameters
+    ----------
+    num_nodes : int
+        Number of coordinate pairs to generate.
+
+    Returns
+    -------
+    np.ndarray
+        Coordinates of shape [num_nodes, 2].
     """
-    Build a minimal heterogeneous graph with the expected topology:
-    data -> hidden, hidden -> hidden, hidden -> data.
-    """
-    graph = HeteroData()
-    graph["data"].x = torch.randn(num_data_nodes, n_data_node_features)
-    graph["hidden"].x = torch.randn(num_hidden_nodes, n_hidden_node_features)
-
-    def dense_edges(n_src: int, n_dst: int, fanout: int) -> torch.Tensor:
-        src = torch.arange(n_src).repeat_interleave(fanout)
-        dst_choices = torch.randint(0, n_dst, (n_src * fanout,))
-        return torch.stack([src, dst_choices], dim=0)
-
-    graph["data", "to", "hidden"].edge_index = dense_edges(
-        num_data_nodes, num_hidden_nodes, fanout=4
-    )
-    graph["hidden", "to", "hidden"].edge_index = dense_edges(
-        num_hidden_nodes, num_hidden_nodes, fanout=6
-    )
-    graph["hidden", "to", "data"].edge_index = dense_edges(
-        num_hidden_nodes, num_data_nodes, fanout=4
-    )
-
-    for key in [
-        ("data", "to", "hidden"),
-        ("hidden", "to", "hidden"),
-        ("hidden", "to", "data"),
-    ]:
-        num_edges = graph[key].edge_index.shape[1]
-        graph[key].edge_attr = torch.randn(num_edges, edge_attr_dim)
-
-    return graph
+    side = int(np.ceil(np.sqrt(num_nodes)))
+    xv, yv = np.meshgrid(np.arange(side), np.arange(side))
+    coords = np.stack([xv.reshape(-1), yv.reshape(-1)], axis=1)
+    return coords[:num_nodes].astype(float)
 
 
 class DummyWeatherDataset(Dataset):
@@ -60,13 +41,38 @@ class DummyWeatherDataset(Dataset):
         n_input_data_features: int,
         n_output_data_features: int,
         n_hidden_data_features: int,
+        graph_builder: GraphBuilder,
         n_unique_graphs: int = 1,
     ):
+        """Initialize the dummy dataset.
+
+        Parameters
+        ----------
+        num_samples : int
+            Number of samples in the dataset.
+        num_data_nodes : int | dict[int, int]
+            Number of data nodes per graph.
+        n_input_data_features : int
+            Input feature dimension.
+        n_output_data_features : int
+            Output feature dimension.
+        n_hidden_data_features : int
+            Hidden node feature dimension.
+        graph_builder : GraphBuilder
+            Graph builder used to create topology.
+        n_unique_graphs : int, optional
+            Number of unique graphs, by default 1.
+
+        Returns
+        -------
+        None
+        """
         self.num_samples = num_samples
         self.num_data_nodes = num_data_nodes
         self.n_input_data_features = n_input_data_features
         self.n_output_data_features = n_output_data_features
         self.n_hidden_data_features = n_hidden_data_features
+        self.graph_builder = graph_builder
         self.n_unique_graphs = n_unique_graphs
         self.graphs: list[HeteroData] = []
         for gid in range(n_unique_graphs):
@@ -74,20 +80,38 @@ class DummyWeatherDataset(Dataset):
                 num_nodes = self.num_data_nodes[gid]
             else:
                 num_nodes = self.num_data_nodes
-            g = build_dummy_weather_graph(
-                num_data_nodes=num_nodes,
-                num_hidden_nodes=max(1, num_nodes // 2),
-                edge_attr_dim=2,
-                n_data_node_features=0,
-                n_hidden_node_features=self.n_hidden_data_features,
-            )
+            coords = _make_grid_coords(num_nodes)
+            if coords.shape[0] != num_nodes:
+                raise ValueError(
+                    f"Generated coords has {coords.shape[0]} nodes but dataset expects {num_nodes}."
+                )
+            g = self.graph_builder(coords)
             g.graph_id = torch.tensor([gid], dtype=torch.long)
             self.graphs.append(g)
 
     def __len__(self) -> int:
+        """Return dataset length.
+
+        Returns
+        -------
+        int
+            Number of samples.
+        """
         return self.num_samples
 
     def __getitem__(self, idx: int) -> HeteroData:
+        """Return a single dummy graph sample.
+
+        Parameters
+        ----------
+        idx : int
+            Sample index.
+
+        Returns
+        -------
+        HeteroData
+            Graph with populated data features/targets.
+        """
         graph = self.graphs[idx % self.n_unique_graphs].clone()
         if isinstance(self.num_data_nodes, dict):
             gid = int(graph.graph_id.item())
@@ -109,6 +133,18 @@ class DummyWeatherDataset(Dataset):
         return graph
 
     def collate_fn(self, graphs: list[HeteroData]) -> Batch:
+        """Collate graphs into a batched HeteroData.
+
+        Parameters
+        ----------
+        graphs : list[HeteroData]
+            Graph samples.
+
+        Returns
+        -------
+        Batch
+            Batched graphs.
+        """
         return Batch.from_data_list(graphs)
 
 
@@ -127,8 +163,36 @@ class TimeseriesDummyWeatherDataset(Dataset):
         n_static_features: int,
         ar_steps: int,
         n_hidden_data_features: int,
+        graph_builder: GraphBuilder,
         n_unique_graphs: int = 1,
     ):
+        """Initialize the timeseries dummy dataset.
+
+        Parameters
+        ----------
+        num_samples : int
+            Number of samples in the dataset.
+        num_data_nodes : int | dict[int, int]
+            Number of data nodes per graph.
+        n_state_features : int
+            State feature dimension.
+        n_forcing_features : int
+            Forcing feature dimension.
+        n_static_features : int
+            Static feature dimension.
+        ar_steps : int
+            Autoregressive rollout length.
+        n_hidden_data_features : int
+            Hidden node feature dimension.
+        graph_builder : GraphBuilder
+            Graph builder used to create topology.
+        n_unique_graphs : int, optional
+            Number of unique graphs, by default 1.
+
+        Returns
+        -------
+        None
+        """
         self.num_samples = num_samples
         self.num_data_nodes = num_data_nodes
         self.n_state_features = n_state_features
@@ -136,6 +200,7 @@ class TimeseriesDummyWeatherDataset(Dataset):
         self.n_static_features = n_static_features
         self.ar_steps = ar_steps
         self.n_hidden_data_features = n_hidden_data_features
+        self.graph_builder = graph_builder
         self.n_unique_graphs = n_unique_graphs
 
         self.graphs: list[HeteroData] = []
@@ -145,20 +210,38 @@ class TimeseriesDummyWeatherDataset(Dataset):
                 if isinstance(num_data_nodes, dict)
                 else num_data_nodes
             )
-            g = build_dummy_weather_graph(
-                num_data_nodes=num_nodes,
-                num_hidden_nodes=max(1, num_nodes // 2),
-                edge_attr_dim=2,
-                n_data_node_features=0,
-                n_hidden_node_features=self.n_hidden_data_features,
-            )
+            coords = _make_grid_coords(num_nodes)
+            if coords.shape[0] != num_nodes:
+                raise ValueError(
+                    f"Generated coords has {coords.shape[0]} nodes but dataset expects {num_nodes}."
+                )
+            g = self.graph_builder(coords)
             g.graph_id = torch.tensor([gid], dtype=torch.long)
             self.graphs.append(g)
 
     def __len__(self) -> int:
+        """Return dataset length.
+
+        Returns
+        -------
+        int
+            Number of samples.
+        """
         return self.num_samples
 
     def __getitem__(self, idx: int) -> HeteroData:
+        """Return a single timeseries graph sample.
+
+        Parameters
+        ----------
+        idx : int
+            Sample index.
+
+        Returns
+        -------
+        HeteroData
+            Graph with autoregressive fields populated.
+        """
         graph = self.graphs[idx % self.n_unique_graphs].clone()
         gid = int(graph.graph_id.item())
         num_nodes = (
@@ -186,6 +269,18 @@ class TimeseriesDummyWeatherDataset(Dataset):
         return graph
 
     def collate_fn(self, graphs: list[HeteroData]) -> Batch:
+        """Collate graphs into a batched HeteroData.
+
+        Parameters
+        ----------
+        graphs : list[HeteroData]
+            Graph samples.
+
+        Returns
+        -------
+        Batch
+            Batched graphs.
+        """
         return Batch.from_data_list(graphs)
 
 
@@ -196,6 +291,7 @@ class WeatherDuckDataModule(pl.LightningDataModule):
 
     def __init__(
         self,
+        graph_builder: GraphBuilder,
         num_samples: int = 128,
         num_data_nodes: int | dict[int, int] = 64,
         n_input_data_features: int = 8,
@@ -204,22 +300,60 @@ class WeatherDuckDataModule(pl.LightningDataModule):
         batch_size: int = 4,
         n_unique_graphs: int = 1,
     ):
+        """Initialize the dummy datamodule.
+
+        Parameters
+        ----------
+        graph_builder : GraphBuilder
+            Graph builder used to create topology.
+        num_samples : int, optional
+            Number of samples, by default 128.
+        num_data_nodes : int | dict[int, int], optional
+            Number of data nodes per graph.
+        n_input_data_features : int, optional
+            Input feature dimension.
+        n_output_data_features : int, optional
+            Output feature dimension.
+        n_hidden_data_features : int, optional
+            Hidden node feature dimension.
+        batch_size : int, optional
+            Batch size.
+        n_unique_graphs : int, optional
+            Number of unique graphs.
+
+        Returns
+        -------
+        None
+        """
         super().__init__()
         self.num_samples = num_samples
         self.num_data_nodes = num_data_nodes
         self.n_input_data_features = n_input_data_features
         self.n_output_data_features = n_output_data_features
         self.n_hidden_data_features = n_hidden_data_features
+        self.graph_builder = graph_builder
         self.batch_size = batch_size
         self.n_unique_graphs = n_unique_graphs
 
     def setup(self, stage: Optional[str] = None) -> None:
+        """Create datasets for the requested stage.
+
+        Parameters
+        ----------
+        stage : Optional[str], optional
+            Lightning stage hint, by default None.
+
+        Returns
+        -------
+        None
+        """
         self.train_ds = DummyWeatherDataset(
             num_samples=self.num_samples,
             num_data_nodes=self.num_data_nodes,
             n_input_data_features=self.n_input_data_features,
             n_output_data_features=self.n_output_data_features,
             n_hidden_data_features=self.n_hidden_data_features,
+            graph_builder=self.graph_builder,
             n_unique_graphs=self.n_unique_graphs,
         )
         self.val_ds = DummyWeatherDataset(
@@ -228,6 +362,7 @@ class WeatherDuckDataModule(pl.LightningDataModule):
             n_input_data_features=self.n_input_data_features,
             n_output_data_features=self.n_output_data_features,
             n_hidden_data_features=self.n_hidden_data_features,
+            graph_builder=self.graph_builder,
             n_unique_graphs=self.n_unique_graphs,
         )
         self.test_ds = DummyWeatherDataset(
@@ -236,10 +371,18 @@ class WeatherDuckDataModule(pl.LightningDataModule):
             n_input_data_features=self.n_input_data_features,
             n_output_data_features=self.n_output_data_features,
             n_hidden_data_features=self.n_hidden_data_features,
+            graph_builder=self.graph_builder,
             n_unique_graphs=self.n_unique_graphs,
         )
 
     def train_dataloader(self) -> GeoDataLoader:
+        """Return the training dataloader.
+
+        Returns
+        -------
+        GeoDataLoader
+            Training dataloader.
+        """
         return GeoDataLoader(
             self.train_ds,
             batch_size=self.batch_size,
@@ -248,11 +391,25 @@ class WeatherDuckDataModule(pl.LightningDataModule):
         )
 
     def val_dataloader(self) -> GeoDataLoader:
+        """Return the validation dataloader.
+
+        Returns
+        -------
+        GeoDataLoader
+            Validation dataloader.
+        """
         return GeoDataLoader(
             self.val_ds, batch_size=self.batch_size, collate_fn=self.val_ds.collate_fn
         )
 
     def test_dataloader(self) -> GeoDataLoader:
+        """Return the test dataloader.
+
+        Returns
+        -------
+        GeoDataLoader
+            Test dataloader.
+        """
         return GeoDataLoader(
             self.test_ds, batch_size=self.batch_size, collate_fn=self.test_ds.collate_fn
         )
@@ -265,6 +422,7 @@ class TimeseriesWeatherDataModule(pl.LightningDataModule):
 
     def __init__(
         self,
+        graph_builder: GraphBuilder,
         num_samples: int = 128,
         num_data_nodes: int | dict[int, int] = 64,
         n_state_features: int = 4,
@@ -275,6 +433,35 @@ class TimeseriesWeatherDataModule(pl.LightningDataModule):
         batch_size: int = 4,
         n_unique_graphs: int = 1,
     ):
+        """Initialize the timeseries dummy datamodule.
+
+        Parameters
+        ----------
+        graph_builder : GraphBuilder
+            Graph builder used to create topology.
+        num_samples : int, optional
+            Number of samples, by default 128.
+        num_data_nodes : int | dict[int, int], optional
+            Number of data nodes per graph.
+        n_state_features : int, optional
+            State feature dimension.
+        n_forcing_features : int, optional
+            Forcing feature dimension.
+        n_static_features : int, optional
+            Static feature dimension.
+        ar_steps : int, optional
+            Autoregressive rollout length.
+        n_hidden_data_features : int, optional
+            Hidden node feature dimension.
+        batch_size : int, optional
+            Batch size.
+        n_unique_graphs : int, optional
+            Number of unique graphs.
+
+        Returns
+        -------
+        None
+        """
         super().__init__()
         self.num_samples = num_samples
         self.num_data_nodes = num_data_nodes
@@ -283,10 +470,22 @@ class TimeseriesWeatherDataModule(pl.LightningDataModule):
         self.n_static_features = n_static_features
         self.ar_steps = ar_steps
         self.n_hidden_data_features = n_hidden_data_features
+        self.graph_builder = graph_builder
         self.batch_size = batch_size
         self.n_unique_graphs = n_unique_graphs
 
     def setup(self, stage: Optional[str] = None) -> None:
+        """Create datasets for the requested stage.
+
+        Parameters
+        ----------
+        stage : Optional[str], optional
+            Lightning stage hint, by default None.
+
+        Returns
+        -------
+        None
+        """
         self.train_ds = TimeseriesDummyWeatherDataset(
             num_samples=self.num_samples,
             num_data_nodes=self.num_data_nodes,
@@ -295,6 +494,7 @@ class TimeseriesWeatherDataModule(pl.LightningDataModule):
             n_static_features=self.n_static_features,
             ar_steps=self.ar_steps,
             n_hidden_data_features=self.n_hidden_data_features,
+            graph_builder=self.graph_builder,
             n_unique_graphs=self.n_unique_graphs,
         )
         self.val_ds = TimeseriesDummyWeatherDataset(
@@ -305,6 +505,7 @@ class TimeseriesWeatherDataModule(pl.LightningDataModule):
             n_static_features=self.n_static_features,
             ar_steps=self.ar_steps,
             n_hidden_data_features=self.n_hidden_data_features,
+            graph_builder=self.graph_builder,
             n_unique_graphs=self.n_unique_graphs,
         )
         self.test_ds = TimeseriesDummyWeatherDataset(
@@ -315,10 +516,18 @@ class TimeseriesWeatherDataModule(pl.LightningDataModule):
             n_static_features=self.n_static_features,
             ar_steps=self.ar_steps,
             n_hidden_data_features=self.n_hidden_data_features,
+            graph_builder=self.graph_builder,
             n_unique_graphs=self.n_unique_graphs,
         )
 
     def train_dataloader(self) -> GeoDataLoader:
+        """Return the training dataloader.
+
+        Returns
+        -------
+        GeoDataLoader
+            Training dataloader.
+        """
         return GeoDataLoader(
             self.train_ds,
             batch_size=self.batch_size,
@@ -327,11 +536,25 @@ class TimeseriesWeatherDataModule(pl.LightningDataModule):
         )
 
     def val_dataloader(self) -> GeoDataLoader:
+        """Return the validation dataloader.
+
+        Returns
+        -------
+        GeoDataLoader
+            Validation dataloader.
+        """
         return GeoDataLoader(
             self.val_ds, batch_size=self.batch_size, collate_fn=self.val_ds.collate_fn
         )
 
     def test_dataloader(self) -> GeoDataLoader:
+        """Return the test dataloader.
+
+        Returns
+        -------
+        GeoDataLoader
+            Test dataloader.
+        """
         return GeoDataLoader(
             self.test_ds, batch_size=self.batch_size, collate_fn=self.test_ds.collate_fn
         )

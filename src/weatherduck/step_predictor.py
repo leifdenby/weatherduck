@@ -19,6 +19,22 @@ __all__ = [
 
 
 def make_mlp(in_dim: int, hidden_dim: int, out_dim: int) -> nn.Sequential:
+    """Create a simple 2-layer MLP with GELU activation.
+
+    Parameters
+    ----------
+    in_dim : int
+        Input feature dimension.
+    hidden_dim : int
+        Hidden layer size.
+    out_dim : int
+        Output feature dimension.
+
+    Returns
+    -------
+    nn.Sequential
+        MLP module.
+    """
     return nn.Sequential(
         nn.Linear(in_dim, hidden_dim),
         nn.GELU(),
@@ -44,6 +60,19 @@ class TrainableFeatures(nn.Module):
     """
 
     def __init__(self, num_nodes: int, n_features: int):
+        """Initialize trainable feature parameters.
+
+        Parameters
+        ----------
+        num_nodes : int
+            Number of nodes in the template graph.
+        n_features : int
+            Trainable feature dimension per node.
+
+        Returns
+        -------
+        None
+        """
         super().__init__()
         self.num_nodes = num_nodes
         self.n_features = n_features
@@ -52,6 +81,18 @@ class TrainableFeatures(nn.Module):
         self.register_parameter("trainable", param)
 
     def forward(self, current_num_nodes: int) -> torch.Tensor:
+        """Return trainable features for a (possibly batched) graph.
+
+        Parameters
+        ----------
+        current_num_nodes : int
+            Number of nodes in the current graph batch.
+
+        Returns
+        -------
+        torch.Tensor
+            Trainable features aligned with nodes.
+        """
         # Supports batched HeteroData where num_nodes can be a multiple of the
         # template node count. If so, repeat the trainable features per graph.
         if current_num_nodes == self.num_nodes:
@@ -79,6 +120,19 @@ class TrainableFeatureManager(nn.Module):
     def __init__(
         self, n_input_trainable_features: int, n_hidden_trainable_features: int
     ):
+        """Initialize the trainable feature manager.
+
+        Parameters
+        ----------
+        n_input_trainable_features : int
+            Trainable feature dimension for data nodes.
+        n_hidden_trainable_features : int
+            Trainable feature dimension for hidden nodes.
+
+        Returns
+        -------
+        None
+        """
         super().__init__()
         self.n_input_trainable_features = n_input_trainable_features
         self.n_hidden_trainable_features = n_hidden_trainable_features
@@ -151,8 +205,23 @@ def run_message_op(
     edge_index: torch.Tensor,
     edge_attr: Optional[torch.Tensor],
 ) -> torch.Tensor:
-    """
-    Call a MessagePassing op while gracefully ignoring edge_attr if unsupported.
+    """Run a PyG message passing op with optional edge attributes.
+
+    Parameters
+    ----------
+    op : MessagePassing
+        Message passing layer.
+    x : tuple[torch.Tensor, torch.Tensor]
+        Source and destination node features.
+    edge_index : torch.Tensor
+        Edge index tensor.
+    edge_attr : Optional[torch.Tensor]
+        Edge attributes, if supported by the op.
+
+    Returns
+    -------
+    torch.Tensor
+        Updated node features.
     """
     sig = inspect.signature(op.forward)
     if "edge_attr" in sig.parameters:
@@ -193,6 +262,23 @@ class SingleNodesetEncoder(nn.Module):
         message_op: MessagePassing,
         post_linear: Optional[nn.Module] = None,
     ):
+        """Initialize the encoder.
+
+        Parameters
+        ----------
+        embedder_src : nn.Module
+            Source node embedder.
+        embedder_dst : nn.Module
+            Destination node embedder.
+        message_op : MessagePassing
+            Message passing layer.
+        post_linear : Optional[nn.Module], optional
+            Optional post-processing linear layer.
+
+        Returns
+        -------
+        None
+        """
         super().__init__()
         self.embedder_src = embedder_src
         self.embedder_dst = embedder_dst
@@ -207,6 +293,24 @@ class SingleNodesetEncoder(nn.Module):
         edge_index: torch.Tensor,
         edge_attr: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        """Encode and propagate source to destination nodes.
+
+        Parameters
+        ----------
+        x_src : torch.Tensor
+            Source node features.
+        x_dst : torch.Tensor
+            Destination node features.
+        edge_index : torch.Tensor
+            Edge indices from source to destination.
+        edge_attr : Optional[torch.Tensor], optional
+            Edge attributes, if used by the message op.
+
+        Returns
+        -------
+        torch.Tensor
+            Updated destination embeddings.
+        """
         x_src = self.activation(self.embedder_src(x_src))
         x_dst = self.activation(self.embedder_dst(x_dst))
         x_dst = self.activation(
@@ -235,6 +339,19 @@ class Processor(nn.Module):
     """
 
     def __init__(self, message_op: MessagePassing, hidden_dim: int):
+        """Initialize the processor block.
+
+        Parameters
+        ----------
+        message_op : MessagePassing
+            Message passing layer for hidden nodes.
+        hidden_dim : int
+            Hidden feature dimension.
+
+        Returns
+        -------
+        None
+        """
         super().__init__()
         self.message_op = message_op
         self.mlp = nn.Sequential(
@@ -249,6 +366,22 @@ class Processor(nn.Module):
         edge_index: torch.Tensor,
         edge_attr: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        """Run hidden-to-hidden message passing.
+
+        Parameters
+        ----------
+        x_hidden : torch.Tensor
+            Hidden node features.
+        edge_index : torch.Tensor
+            Edge indices for hidden-to-hidden edges.
+        edge_attr : Optional[torch.Tensor], optional
+            Edge attributes, if supported.
+
+        Returns
+        -------
+        torch.Tensor
+            Updated hidden features.
+        """
         x_hidden = run_message_op(
             self.message_op, (x_hidden, x_hidden), edge_index, edge_attr
         )
@@ -283,6 +416,23 @@ class SingleNodesetDecoder(nn.Module):
         message_op: MessagePassing,
         out_linear: nn.Module,
     ):
+        """Initialize the decoder.
+
+        Parameters
+        ----------
+        embedder_src : nn.Module
+            Hidden node embedder.
+        embedder_dst : nn.Module
+            Data node embedder.
+        message_op : MessagePassing
+            Message passing layer.
+        out_linear : nn.Module
+            Output projection layer.
+
+        Returns
+        -------
+        None
+        """
         super().__init__()
         self.embedder_src = embedder_src
         self.embedder_dst = embedder_dst
@@ -297,6 +447,24 @@ class SingleNodesetDecoder(nn.Module):
         edge_index: torch.Tensor,
         edge_attr: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        """Decode hidden features into data node predictions.
+
+        Parameters
+        ----------
+        x_src : torch.Tensor
+            Source (hidden) node features.
+        x_dst : torch.Tensor
+            Destination (data) node features.
+        edge_index : torch.Tensor
+            Edge indices for hidden-to-data edges.
+        edge_attr : Optional[torch.Tensor], optional
+            Edge attributes, if supported.
+
+        Returns
+        -------
+        torch.Tensor
+            Output predictions for data nodes.
+        """
         x_src = self.activation(self.embedder_src(x_src))
         x_dst = self.activation(self.embedder_dst(x_dst))
         x_dst = self.activation(
@@ -322,6 +490,33 @@ class EncodeProcessDecodeModel(nn.Module):
         n_hidden_trainable_features: int = 0,
         trainable_manager: Optional[TrainableFeatureManager] = None,
     ):
+        """Initialize the encode-process-decode model.
+
+        Parameters
+        ----------
+        encoder : SingleNodesetEncoder
+            Encoder mapping data to hidden nodes.
+        processor : Processor
+            Hidden-to-hidden processor.
+        decoder : SingleNodesetDecoder
+            Decoder mapping hidden back to data.
+        n_input_data_features : int, optional
+            Input feature dimension on data nodes.
+        n_output_data_features : int, optional
+            Output feature dimension on data nodes.
+        n_hidden_data_features : int, optional
+            Feature dimension on hidden nodes.
+        n_input_trainable_features : int, optional
+            Trainable feature dimension on data nodes.
+        n_hidden_trainable_features : int, optional
+            Trainable feature dimension on hidden nodes.
+        trainable_manager : Optional[TrainableFeatureManager], optional
+            Optional shared trainable feature manager.
+
+        Returns
+        -------
+        None
+        """
         super().__init__()
         self.encoder = encoder
         self.processor = processor
@@ -336,6 +531,18 @@ class EncodeProcessDecodeModel(nn.Module):
         )
 
     def forward(self, graph: HeteroData) -> torch.Tensor:
+        """Run the encode-process-decode model on a graph.
+
+        Parameters
+        ----------
+        graph : HeteroData
+            Input graph with required node/edge types.
+
+        Returns
+        -------
+        torch.Tensor
+            Output predictions for data nodes.
+        """
         required_nodes = {"data", "hidden"}
         required_edges = {
             ("data", "to", "hidden"),

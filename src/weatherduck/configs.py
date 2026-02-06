@@ -9,6 +9,7 @@ from torch_geometric.nn import SAGEConv
 
 from .ar_forecaster import AutoRegressiveForecaster
 from .data.dummy import TimeseriesWeatherDataModule, WeatherDuckDataModule
+from .graphs import DummyGraphBuilder
 from .lightning import WeatherDuckModule
 from .step_predictor import (
     EncodeProcessDecodeModel,
@@ -96,6 +97,8 @@ def build_encode_process_decode_model(
 
 @dataclass
 class Experiment:
+    """Container for Lightning module, data module, and trainer."""
+
     pl_module: pl.LightningModule
     data: pl.LightningDataModule
     trainer: pl.Trainer
@@ -147,6 +150,7 @@ def experiment_factory() -> Experiment:
         n_input_data_features=n_input_data_features,
         n_output_data_features=n_output_data_features,
         n_hidden_data_features=n_hidden_data_features,
+        graph_builder=DummyGraphBuilder(),
         batch_size=4,
     )
 
@@ -208,6 +212,7 @@ def autoregressive_experiment_factory() -> Experiment:
         n_static_features=n_static_features,
         ar_steps=ar_steps,
         n_hidden_data_features=n_hidden_data_features,
+        graph_builder=DummyGraphBuilder(),
         batch_size=4,
         n_unique_graphs=2,
     )

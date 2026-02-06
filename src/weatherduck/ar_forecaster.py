@@ -14,6 +14,17 @@ class AutoRegressiveForecaster(nn.Module):
     """
 
     def __init__(self, step_predictor: EncodeProcessDecodeModel):
+        """Initialize the autoregressive forecaster.
+
+        Parameters
+        ----------
+        step_predictor : EncodeProcessDecodeModel
+            Model used for single-step predictions.
+
+        Returns
+        -------
+        None
+        """
         super().__init__()
         self.step_predictor = step_predictor
 
