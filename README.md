@@ -33,24 +33,6 @@ uv run weatherduck  # runs experiment_factory → Experiment.run()
 ```
 This uses dummy graphs/data and should execute end-to-end on CPU or MPS.
 
-## Graph builders
-Weatherduck now constructs graphs through a `GraphBuilder` interface:
-- `DummyGraphBuilder`: produces a minimal hetero graph for quick iteration.
-- `WMGGraphBuilder`: uses `weather-model-graphs` to build a graph from spatial coordinates.
-
-Example:
-```python
-from weatherduck import DummyGraphBuilder, WeatherDuckDataModule
-
-dm = WeatherDuckDataModule(
-    graph_builder=DummyGraphBuilder(),
-    num_samples=64,
-    num_data_nodes=64,
-    n_input_data_features=8,
-    n_output_data_features=8,
-    n_hidden_data_features=4,
-)
-```
 
 ## Key dimensions (n_*)
 - `n_input_data_features`: dataset-provided data-node features.
@@ -86,4 +68,29 @@ Shapes follow the convention: first dim = nodes, last dim = time (for sequences)
 ## Running tests
 ```bash
 uv run pytest
+```
+
+## Graph builders
+Weatherduck constructs graphs through a `GraphBuilder` interface. A `GraphBuilder`
+is a small callable that takes data-node coordinates and returns a `HeteroData`
+graph matching Weatherduck’s expected node/edge types and shapes. This keeps
+graph construction independent from datasets and lets you swap in different
+graph generators without changing data pipelines.
+
+Implementations:
+- `DummyGraphBuilder`: produces a minimal hetero graph for quick iteration.
+- `WMGGraphBuilder`: uses `weather-model-graphs` to build a graph from spatial coordinates.
+
+Example:
+```python
+from weatherduck import DummyGraphBuilder, WeatherDuckDataModule
+
+dm = WeatherDuckDataModule(
+    graph_builder=DummyGraphBuilder(),
+    num_samples=64,
+    num_data_nodes=64,
+    n_input_data_features=8,
+    n_output_data_features=8,
+    n_hidden_data_features=4,
+)
 ```
