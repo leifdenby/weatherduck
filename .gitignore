@@ -2,3 +2,9 @@
 uv.lock
 .python-version
 lightning_logs/
+
+.codex-session
+anemoi-core/
+anemoi-datasets/
+neural-lam/
+weather-model-graphs/
