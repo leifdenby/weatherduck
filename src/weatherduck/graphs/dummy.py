@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import numpy as np
 import torch
 from torch_geometric.data import HeteroData
 
@@ -102,25 +103,22 @@ class DummyGraphBuilder(GraphBuilder):
         self.n_data_node_features = n_data_node_features
         self.n_hidden_node_features = n_hidden_node_features
 
-    def __call__(self, coords=None) -> HeteroData:
+    def __call__(self, coords: np.ndarray) -> HeteroData:
         """Build a dummy graph for given coords.
 
         Parameters
         ----------
-        coords : Any, optional
-            Coordinates array; used only to infer node count.
+        coords : np.ndarray
+            Coordinates array used to infer data node count.
 
         Returns
         -------
         HeteroData
             Dummy heterogenous graph.
         """
-        if coords is not None and self.num_data_nodes is None:
-            num_data_nodes = coords.shape[0]
-        else:
-            num_data_nodes = self.num_data_nodes
-        if num_data_nodes is None:
-            raise ValueError("num_data_nodes must be provided when coords are None.")
+        num_data_nodes = (
+            coords.shape[0] if self.num_data_nodes is None else self.num_data_nodes
+        )
         num_hidden_nodes = (
             max(1, num_data_nodes // 2)
             if self.num_hidden_nodes is None
