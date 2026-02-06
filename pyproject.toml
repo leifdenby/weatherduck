@@ -29,6 +29,9 @@ dev = [
     "pre-commit>=4.5.0",
     "pytest>=9.0.2",
 ]
+neural-lam = [
+    "neural-lam",
+]
 wmg = [
     "weather-model-graphs>=0.3.0",
 ]
@@ -38,3 +41,6 @@ profile = "black"
 line_length = 88
 combine_as_imports = true
 known_first_party = ["weatherduck"]
+
+[tool.uv.sources]
+neural-lam = { git = "https://github.com/leifdenby/neural-lam", rev = "feat/graph-with-dataset" }

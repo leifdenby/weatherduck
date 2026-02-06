@@ -20,7 +20,9 @@ Weatherduck was built to be a lightweight, hydra-free scaffold that mirrors [neu
 - `src/weatherduck/lightning.py`: Lightning wrapper (`WeatherDuckModule`) around any model.
 - `src/weatherduck/ar_forecaster.py`: `AutoRegressiveForecaster` that rolls out multi-step predictions with a provided step predictor.
 - `src/weatherduck/graphs/`: graph builder interfaces and implementations (`GraphBuilder`, `DummyGraphBuilder`, `WMGGraphBuilder`).
-- `src/weatherduck/data/dummy.py`: dummy datasets/datamodules for single-step and timeseries graphs (now constructed via a `GraphBuilder`).
+- `src/weatherduck/data/base.py`: `BaseWeatherDataModule` shared datamodule base class that standardizes split handling and GeoDataLoader wiring for datasets that yield `HeteroData`.
+- `src/weatherduck/data/dummy.py`: dummy dataset implementations and `DummyWeatherDataModule`/`DummyTimeseriesWeatherDataModule` (built on the base class).
+- `src/weatherduck/data/neural_lam.py`: neural-lam-backed `MDPDataModule` and dataset adapter (currently non-hierarchical graphs only).
 - `src/weatherduck/configs.py`: Fiddle factories (`build_encode_process_decode_model`, `experiment_factory`, `autoregressive_experiment_factory`) and the `Experiment` dataclass.
 - `src/weatherduck/__init__.py`: Public exports.
 - `tests/test_weatherduck.py`: Smoke tests for single-step training.
@@ -83,9 +85,9 @@ Implementations:
 
 Example:
 ```python
-from weatherduck import DummyGraphBuilder, WeatherDuckDataModule
+from weatherduck import DummyGraphBuilder, DummyWeatherDataModule
 
-dm = WeatherDuckDataModule(
+dm = DummyWeatherDataModule(
     graph_builder=DummyGraphBuilder(),
     num_samples=64,
     num_data_nodes=64,

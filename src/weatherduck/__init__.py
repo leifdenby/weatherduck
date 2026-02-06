@@ -6,10 +6,12 @@ from .configs import (
     experiment_factory,
 )
 from .data import (
+    BaseWeatherDataModule,
+    DummyTimeseriesWeatherDataModule,
+    DummyWeatherDataModule,
     DummyWeatherDataset,
+    MDPDataModule,
     TimeseriesDummyWeatherDataset,
-    TimeseriesWeatherDataModule,
-    WeatherDuckDataModule,
 )
 from .graphs import (
     DummyGraphBuilder,
@@ -39,10 +41,12 @@ __all__ = [
     "SingleNodesetEncoder",
     "TrainableFeatureManager",
     "TrainableFeatures",
+    "BaseWeatherDataModule",
     "DummyWeatherDataset",
+    "MDPDataModule",
     "TimeseriesDummyWeatherDataset",
-    "TimeseriesWeatherDataModule",
-    "WeatherDuckDataModule",
+    "DummyTimeseriesWeatherDataModule",
+    "DummyWeatherDataModule",
     "build_dummy_weather_graph",
     "GraphBuilder",
     "DummyGraphBuilder",

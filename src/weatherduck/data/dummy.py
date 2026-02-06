@@ -1,13 +1,10 @@
-from typing import Optional
-
 import numpy as np
-import pytorch_lightning as pl
 import torch
 from torch.utils.data import Dataset
 from torch_geometric.data import Batch, HeteroData
-from torch_geometric.loader import DataLoader as GeoDataLoader
 
 from ..graphs import GraphBuilder
+from .base import BaseWeatherDataModule
 
 
 def _make_grid_coords(num_nodes: int) -> np.ndarray:
@@ -284,7 +281,7 @@ class TimeseriesDummyWeatherDataset(Dataset):
         return Batch.from_data_list(graphs)
 
 
-class WeatherDuckDataModule(pl.LightningDataModule):
+class DummyWeatherDataModule(BaseWeatherDataModule):
     """
     LightningDataModule providing dummy weather graphs via PyG DataLoader.
     """
@@ -325,48 +322,33 @@ class WeatherDuckDataModule(pl.LightningDataModule):
         -------
         None
         """
-        super().__init__()
+        super().__init__(batch_size=batch_size)
         self.num_samples = num_samples
         self.num_data_nodes = num_data_nodes
         self.n_input_data_features = n_input_data_features
         self.n_output_data_features = n_output_data_features
         self.n_hidden_data_features = n_hidden_data_features
         self.graph_builder = graph_builder
-        self.batch_size = batch_size
         self.n_unique_graphs = n_unique_graphs
 
-    def setup(self, stage: Optional[str] = None) -> None:
-        """Create datasets for the requested stage.
+    def get_dataset(self, split: str) -> Dataset:
+        """Return the dataset for the requested split.
 
         Parameters
         ----------
-        stage : Optional[str], optional
-            Lightning stage hint, by default None.
+        split : str
+            Dataset split name ("train", "val", or "test").
 
         Returns
         -------
-        None
+        Dataset
+            Dummy dataset instance.
         """
-        self.train_ds = DummyWeatherDataset(
-            num_samples=self.num_samples,
-            num_data_nodes=self.num_data_nodes,
-            n_input_data_features=self.n_input_data_features,
-            n_output_data_features=self.n_output_data_features,
-            n_hidden_data_features=self.n_hidden_data_features,
-            graph_builder=self.graph_builder,
-            n_unique_graphs=self.n_unique_graphs,
+        num_samples = (
+            self.num_samples if split == "train" else max(8, self.num_samples // 10)
         )
-        self.val_ds = DummyWeatherDataset(
-            num_samples=max(8, self.num_samples // 10),
-            num_data_nodes=self.num_data_nodes,
-            n_input_data_features=self.n_input_data_features,
-            n_output_data_features=self.n_output_data_features,
-            n_hidden_data_features=self.n_hidden_data_features,
-            graph_builder=self.graph_builder,
-            n_unique_graphs=self.n_unique_graphs,
-        )
-        self.test_ds = DummyWeatherDataset(
-            num_samples=max(8, self.num_samples // 10),
+        return DummyWeatherDataset(
+            num_samples=num_samples,
             num_data_nodes=self.num_data_nodes,
             n_input_data_features=self.n_input_data_features,
             n_output_data_features=self.n_output_data_features,
@@ -375,47 +357,8 @@ class WeatherDuckDataModule(pl.LightningDataModule):
             n_unique_graphs=self.n_unique_graphs,
         )
 
-    def train_dataloader(self) -> GeoDataLoader:
-        """Return the training dataloader.
 
-        Returns
-        -------
-        GeoDataLoader
-            Training dataloader.
-        """
-        return GeoDataLoader(
-            self.train_ds,
-            batch_size=self.batch_size,
-            shuffle=True,
-            collate_fn=self.train_ds.collate_fn,
-        )
-
-    def val_dataloader(self) -> GeoDataLoader:
-        """Return the validation dataloader.
-
-        Returns
-        -------
-        GeoDataLoader
-            Validation dataloader.
-        """
-        return GeoDataLoader(
-            self.val_ds, batch_size=self.batch_size, collate_fn=self.val_ds.collate_fn
-        )
-
-    def test_dataloader(self) -> GeoDataLoader:
-        """Return the test dataloader.
-
-        Returns
-        -------
-        GeoDataLoader
-            Test dataloader.
-        """
-        return GeoDataLoader(
-            self.test_ds, batch_size=self.batch_size, collate_fn=self.test_ds.collate_fn
-        )
-
-
-class TimeseriesWeatherDataModule(pl.LightningDataModule):
+class DummyTimeseriesWeatherDataModule(BaseWeatherDataModule):
     """
     DataModule for timeseries dummy data compatible with AutoRegressiveForecaster.
     """
@@ -462,7 +405,7 @@ class TimeseriesWeatherDataModule(pl.LightningDataModule):
         -------
         None
         """
-        super().__init__()
+        super().__init__(batch_size=batch_size)
         self.num_samples = num_samples
         self.num_data_nodes = num_data_nodes
         self.n_state_features = n_state_features
@@ -471,23 +414,26 @@ class TimeseriesWeatherDataModule(pl.LightningDataModule):
         self.ar_steps = ar_steps
         self.n_hidden_data_features = n_hidden_data_features
         self.graph_builder = graph_builder
-        self.batch_size = batch_size
         self.n_unique_graphs = n_unique_graphs
 
-    def setup(self, stage: Optional[str] = None) -> None:
-        """Create datasets for the requested stage.
+    def get_dataset(self, split: str) -> Dataset:
+        """Return the dataset for the requested split.
 
         Parameters
         ----------
-        stage : Optional[str], optional
-            Lightning stage hint, by default None.
+        split : str
+            Dataset split name ("train", "val", or "test").
 
         Returns
         -------
-        None
+        Dataset
+            Timeseries dummy dataset instance.
         """
-        self.train_ds = TimeseriesDummyWeatherDataset(
-            num_samples=self.num_samples,
+        num_samples = (
+            self.num_samples if split == "train" else max(8, self.num_samples // 10)
+        )
+        return TimeseriesDummyWeatherDataset(
+            num_samples=num_samples,
             num_data_nodes=self.num_data_nodes,
             n_state_features=self.n_state_features,
             n_forcing_features=self.n_forcing_features,
@@ -496,65 +442,4 @@ class TimeseriesWeatherDataModule(pl.LightningDataModule):
             n_hidden_data_features=self.n_hidden_data_features,
             graph_builder=self.graph_builder,
             n_unique_graphs=self.n_unique_graphs,
-        )
-        self.val_ds = TimeseriesDummyWeatherDataset(
-            num_samples=max(8, self.num_samples // 10),
-            num_data_nodes=self.num_data_nodes,
-            n_state_features=self.n_state_features,
-            n_forcing_features=self.n_forcing_features,
-            n_static_features=self.n_static_features,
-            ar_steps=self.ar_steps,
-            n_hidden_data_features=self.n_hidden_data_features,
-            graph_builder=self.graph_builder,
-            n_unique_graphs=self.n_unique_graphs,
-        )
-        self.test_ds = TimeseriesDummyWeatherDataset(
-            num_samples=max(8, self.num_samples // 10),
-            num_data_nodes=self.num_data_nodes,
-            n_state_features=self.n_state_features,
-            n_forcing_features=self.n_forcing_features,
-            n_static_features=self.n_static_features,
-            ar_steps=self.ar_steps,
-            n_hidden_data_features=self.n_hidden_data_features,
-            graph_builder=self.graph_builder,
-            n_unique_graphs=self.n_unique_graphs,
-        )
-
-    def train_dataloader(self) -> GeoDataLoader:
-        """Return the training dataloader.
-
-        Returns
-        -------
-        GeoDataLoader
-            Training dataloader.
-        """
-        return GeoDataLoader(
-            self.train_ds,
-            batch_size=self.batch_size,
-            shuffle=True,
-            collate_fn=self.train_ds.collate_fn,
-        )
-
-    def val_dataloader(self) -> GeoDataLoader:
-        """Return the validation dataloader.
-
-        Returns
-        -------
-        GeoDataLoader
-            Validation dataloader.
-        """
-        return GeoDataLoader(
-            self.val_ds, batch_size=self.batch_size, collate_fn=self.val_ds.collate_fn
-        )
-
-    def test_dataloader(self) -> GeoDataLoader:
-        """Return the test dataloader.
-
-        Returns
-        -------
-        GeoDataLoader
-            Test dataloader.
-        """
-        return GeoDataLoader(
-            self.test_ds, batch_size=self.batch_size, collate_fn=self.test_ds.collate_fn
         )

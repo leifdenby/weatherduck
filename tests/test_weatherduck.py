@@ -2,7 +2,7 @@ import torch
 
 from weatherduck import (
     DummyGraphBuilder,
-    WeatherDuckDataModule,
+    DummyWeatherDataModule,
     build_encode_process_decode_model,
 )
 
@@ -16,7 +16,7 @@ def test_single_batch_forward():
     n_hidden_trainable_features = 3
     hidden_dim = 64
 
-    dm = WeatherDuckDataModule(
+    dm = DummyWeatherDataModule(
         num_samples=1,
         num_data_nodes=16,
         n_input_data_features=n_input_data_features,
@@ -55,7 +55,7 @@ def test_trainable_params_match_unique_graphs():
     num_nodes_per_graph = {0: 6, 1: 8, 2: 10}
     n_unique_graphs = len(num_nodes_per_graph)
 
-    dm = WeatherDuckDataModule(
+    dm = DummyWeatherDataModule(
         num_samples=6,
         num_data_nodes=num_nodes_per_graph,
         n_input_data_features=n_input_data_features,

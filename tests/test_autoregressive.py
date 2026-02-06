@@ -8,7 +8,7 @@ import torch
 from weatherduck import (
     AutoRegressiveForecaster,
     DummyGraphBuilder,
-    TimeseriesWeatherDataModule,
+    DummyTimeseriesWeatherDataModule,
     WMGGraphBuilder,
     build_encode_process_decode_model,
 )
@@ -22,7 +22,7 @@ class AutoregressiveExperiment:
     ----------
     model : AutoRegressiveForecaster
         Autoregressive model to evaluate.
-    data : TimeseriesWeatherDataModule
+    data : DummyTimeseriesWeatherDataModule
         Data module providing autoregressive batches.
 
     Returns
@@ -31,7 +31,7 @@ class AutoregressiveExperiment:
     """
 
     model: AutoRegressiveForecaster
-    data: TimeseriesWeatherDataModule
+    data: DummyTimeseriesWeatherDataModule
 
     def run(self) -> None:
         """Run a smoke test over a single batch.
@@ -65,7 +65,7 @@ def experiment_factory() -> AutoregressiveExperiment:
     n_hidden_trainable_features = 2
     hidden_dim = 32
 
-    dm = TimeseriesWeatherDataModule(
+    dm = DummyTimeseriesWeatherDataModule(
         graph_builder=DummyGraphBuilder(),
         num_samples=4,
         num_data_nodes=8,

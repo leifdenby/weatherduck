@@ -8,7 +8,7 @@ from torch import nn
 from torch_geometric.nn import SAGEConv
 
 from .ar_forecaster import AutoRegressiveForecaster
-from .data.dummy import TimeseriesWeatherDataModule, WeatherDuckDataModule
+from .data.dummy import DummyTimeseriesWeatherDataModule, DummyWeatherDataModule
 from .graphs import DummyGraphBuilder
 from .lightning import WeatherDuckModule
 from .step_predictor import (
@@ -144,7 +144,7 @@ def experiment_factory() -> Experiment:
         lr=1e-3,
     )
 
-    data = WeatherDuckDataModule(
+    data = DummyWeatherDataModule(
         num_samples=256,
         num_data_nodes=64,
         n_input_data_features=n_input_data_features,
@@ -204,7 +204,7 @@ def autoregressive_experiment_factory() -> Experiment:
         lr=1e-3,
     )
 
-    data = TimeseriesWeatherDataModule(
+    data = DummyTimeseriesWeatherDataModule(
         num_samples=256,
         num_data_nodes=64,
         n_state_features=n_state_features,
