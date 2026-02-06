@@ -19,7 +19,8 @@ Weatherduck was built to be a lightweight, hydra-free scaffold that mirrors [neu
 - `src/weatherduck/step_predictor.py`: single-step components (`EncodeProcessDecodeModel`, `SingleNodesetEncoder`/`Processor`/`SingleNodesetDecoder`, trainable feature utilities).
 - `src/weatherduck/lightning.py`: Lightning wrapper (`WeatherDuckModule`) around any model.
 - `src/weatherduck/ar_forecaster.py`: `AutoRegressiveForecaster` that rolls out multi-step predictions with a provided step predictor.
-- `src/weatherduck/data/dummy.py`: dummy datasets/datamodules for single-step and timeseries graphs plus `build_dummy_weather_graph`.
+- `src/weatherduck/graphs/`: graph builder interfaces and implementations (`GraphBuilder`, `DummyGraphBuilder`, `WMGGraphBuilder`).
+- `src/weatherduck/data/dummy.py`: dummy datasets/datamodules for single-step and timeseries graphs (now constructed via a `GraphBuilder`).
 - `src/weatherduck/configs.py`: Fiddle factories (`build_encode_process_decode_model`, `experiment_factory`, `autoregressive_experiment_factory`) and the `Experiment` dataclass.
 - `src/weatherduck/__init__.py`: Public exports.
 - `tests/test_weatherduck.py`: Smoke tests for single-step training.
@@ -31,6 +32,7 @@ Weatherduck was built to be a lightweight, hydra-free scaffold that mirrors [neu
 uv run weatherduck  # runs experiment_factory → Experiment.run()
 ```
 This uses dummy graphs/data and should execute end-to-end on CPU or MPS.
+
 
 ## Key dimensions (n_*)
 - `n_input_data_features`: dataset-provided data-node features.
@@ -66,4 +68,29 @@ Shapes follow the convention: first dim = nodes, last dim = time (for sequences)
 ## Running tests
 ```bash
 uv run pytest
+```
+
+## Graph builders
+Weatherduck constructs graphs through a `GraphBuilder` interface. A `GraphBuilder`
+is a small callable that takes data-node coordinates and returns a `HeteroData`
+graph matching Weatherduck’s expected node/edge types and shapes. This keeps
+graph construction independent from datasets and lets you swap in different
+graph generators without changing data pipelines.
+
+Implementations:
+- `DummyGraphBuilder`: produces a minimal hetero graph for quick iteration.
+- `WMGGraphBuilder`: uses `weather-model-graphs` to build a graph from spatial coordinates.
+
+Example:
+```python
+from weatherduck import DummyGraphBuilder, WeatherDuckDataModule
+
+dm = WeatherDuckDataModule(
+    graph_builder=DummyGraphBuilder(),
+    num_samples=64,
+    num_data_nodes=64,
+    n_input_data_features=8,
+    n_output_data_features=8,
+    n_hidden_data_features=4,
+)
 ```

@@ -10,6 +10,11 @@ from .data import (
     TimeseriesDummyWeatherDataset,
     TimeseriesWeatherDataModule,
     WeatherDuckDataModule,
+)
+from .graphs import (
+    DummyGraphBuilder,
+    GraphBuilder,
+    WMGGraphBuilder,
     build_dummy_weather_graph,
 )
 from .lightning import WeatherDuckModule
@@ -39,6 +44,9 @@ __all__ = [
     "TimeseriesWeatherDataModule",
     "WeatherDuckDataModule",
     "build_dummy_weather_graph",
+    "GraphBuilder",
+    "DummyGraphBuilder",
+    "WMGGraphBuilder",
     "build_encode_process_decode_model",
     "experiment_factory",
     "autoregressive_experiment_factory",
