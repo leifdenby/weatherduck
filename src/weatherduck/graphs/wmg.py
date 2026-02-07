@@ -28,6 +28,7 @@ class WMGGraphProvider(GraphProvider):
         max_num_levels: int | None = None,
         coords_crs=None,
         graph_crs=None,
+        cache: str = "in_memory",
     ) -> None:
         """Initialize the WMG graph provider.
 
@@ -45,11 +46,14 @@ class WMGGraphProvider(GraphProvider):
             Coordinate CRS of input coords.
         graph_crs : Any, optional
             CRS to use for graph construction.
+        cache : str, optional
+            Cache mode identifier, by default "in_memory".
 
         Returns
         -------
         None
         """
+        super().__init__(cache=cache)
         self.kind = kind
         self.mesh_node_distance = mesh_node_distance
         self.level_refinement_factor = level_refinement_factor
@@ -57,11 +61,13 @@ class WMGGraphProvider(GraphProvider):
         self.coords_crs = coords_crs
         self.graph_crs = graph_crs
 
-    def __call__(self, coords: np.ndarray) -> HeteroData:
+    def __call__(self, domain_id: str, coords: np.ndarray) -> HeteroData:
         """Build a graph from spatial coordinates.
 
         Parameters
         ----------
+        domain_id : str
+            Identifier for the data domain.
         coords : np.ndarray
             Array of shape [N, 2] with spatial coordinates.
 
@@ -70,8 +76,51 @@ class WMGGraphProvider(GraphProvider):
         HeteroData
             WeatherDuck-compatible graph.
         """
+        graph_id = self._build_graph_id(domain_id)
+        cached = self.get_cached(graph_id)
+        if cached is not None:
+            return cached.clone()
         nx_graph = self._build_networkx_graph(coords)
-        return _to_heterodata(nx_graph)
+        graph = _to_heterodata(nx_graph)
+        graph.graph_id_str = graph_id
+        self.set_cached(graph_id, graph)
+        return graph
+
+    def _build_graph_id(self, domain_id: str) -> str:
+        """Build a graph id from provider parameters and domain id.
+
+        Parameters
+        ----------
+        domain_id : str
+            Identifier for the data domain.
+
+        Returns
+        -------
+        str
+            Stable graph identifier for caching.
+        """
+
+        def _safe(value: object) -> str:
+            text = str(value)
+            cleaned = []
+            for ch in text:
+                if ch.isalnum() or ch in ("-", "_", "."):
+                    cleaned.append(ch)
+                else:
+                    cleaned.append("_")
+            return "".join(cleaned)
+
+        parts = [
+            "wmg",
+            _safe(domain_id),
+            f"kind={_safe(self.kind)}",
+            f"mesh_node_distance={_safe(self.mesh_node_distance)}",
+            f"level_refinement_factor={_safe(self.level_refinement_factor)}",
+            f"max_num_levels={_safe(self.max_num_levels)}",
+            f"coords_crs={_safe(self.coords_crs)}",
+            f"graph_crs={_safe(self.graph_crs)}",
+        ]
+        return "__".join(parts)
 
     def _build_networkx_graph(self, coords: np.ndarray):
         """Build a weather-model-graphs networkx graph.

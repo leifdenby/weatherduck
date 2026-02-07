@@ -69,10 +69,14 @@ Shapes follow the convention: first dim = nodes, last dim = time (for sequences)
 
 ## Graph providers
 Weatherduck constructs graphs through a `GraphProvider` interface. A `GraphProvider`
-is a small callable that takes data-node coordinates and returns a `HeteroData`
-graph matching Weatherduck’s expected node/edge types and shapes. This keeps
-graph construction independent from datasets and lets you swap in different
-graph generators without changing data pipelines.
+is a small callable that takes a `domain_id` and data-node coordinates, then returns
+a `HeteroData` graph matching Weatherduck’s expected node/edge types and shapes.
+This keeps graph construction independent from datasets and lets you swap in
+different graph generators without changing data pipelines.
+
+`GraphProvider` includes an optional in-memory cache. Providers combine their
+configuration with the `domain_id` to compute a stable graph id for caching, so
+repeat calls for the same domain can reuse the graph instead of recomputing it.
 
 Implementations:
 - `DummyGraphProvider`: produces a minimal hetero graph for quick iteration.

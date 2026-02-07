@@ -38,7 +38,8 @@ class NeuralLamWeatherGraphDataset(Dataset):
         if coords.ndim != 2 or coords.shape[1] != 2:
             raise ValueError("Expected coords with shape [N, 2] from datastore.get_xy.")
         self.coords = coords
-        self.graph = self.graph_builder(self.coords)
+        domain_id = f"mdp:{self.dataset.datastore.root_path}"
+        self.graph = self.graph_builder(domain_id=domain_id, coords=self.coords)
         if self.graph["data"].num_nodes != self.coords.shape[0]:
             raise ValueError(
                 "Graph/data node count mismatch: "

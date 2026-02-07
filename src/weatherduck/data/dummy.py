@@ -82,7 +82,8 @@ class DummyWeatherDataset(Dataset):
                 raise ValueError(
                     f"Generated coords has {coords.shape[0]} nodes but dataset expects {num_nodes}."
                 )
-            g = self.graph_builder(coords)
+            domain_id = f"dummy-{gid}"
+            g = self.graph_builder(domain_id=domain_id, coords=coords)
             g.graph_id = torch.tensor([gid], dtype=torch.long)
             self.graphs.append(g)
 
@@ -212,7 +213,8 @@ class TimeseriesDummyWeatherDataset(Dataset):
                 raise ValueError(
                     f"Generated coords has {coords.shape[0]} nodes but dataset expects {num_nodes}."
                 )
-            g = self.graph_builder(coords)
+            domain_id = f"dummy-timeseries-{gid}"
+            g = self.graph_builder(domain_id=domain_id, coords=coords)
             g.graph_id = torch.tensor([gid], dtype=torch.long)
             self.graphs.append(g)
 

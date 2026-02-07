@@ -77,6 +77,7 @@ class DummyGraphProvider(GraphProvider):
         edge_attr_dim: int = 2,
         n_data_node_features: int = 0,
         n_hidden_node_features: int = 0,
+        cache: str = "in_memory",
     ) -> None:
         """Initialize the dummy graph provider.
 
@@ -92,22 +93,27 @@ class DummyGraphProvider(GraphProvider):
             Data node feature dimension.
         n_hidden_node_features : int, optional
             Hidden node feature dimension.
+        cache : str, optional
+            Cache mode identifier, by default "in_memory".
 
         Returns
         -------
         None
         """
+        super().__init__(cache=cache)
         self.num_data_nodes = num_data_nodes
         self.num_hidden_nodes = num_hidden_nodes
         self.edge_attr_dim = edge_attr_dim
         self.n_data_node_features = n_data_node_features
         self.n_hidden_node_features = n_hidden_node_features
 
-    def __call__(self, coords: np.ndarray) -> HeteroData:
+    def __call__(self, domain_id: str, coords: np.ndarray) -> HeteroData:
         """Build a dummy graph for given coords.
 
         Parameters
         ----------
+        domain_id : str
+            Identifier for the data domain.
         coords : np.ndarray
             Coordinates array used to infer data node count.
 
@@ -116,6 +122,10 @@ class DummyGraphProvider(GraphProvider):
         HeteroData
             Dummy heterogenous graph.
         """
+        graph_id = f"dummy__{domain_id}"
+        cached = self.get_cached(graph_id)
+        if cached is not None:
+            return cached.clone()
         num_data_nodes = (
             coords.shape[0] if self.num_data_nodes is None else self.num_data_nodes
         )
@@ -124,10 +134,13 @@ class DummyGraphProvider(GraphProvider):
             if self.num_hidden_nodes is None
             else self.num_hidden_nodes
         )
-        return build_dummy_weather_graph(
+        graph = build_dummy_weather_graph(
             num_data_nodes=num_data_nodes,
             num_hidden_nodes=num_hidden_nodes,
             edge_attr_dim=self.edge_attr_dim,
             n_data_node_features=self.n_data_node_features,
             n_hidden_node_features=self.n_hidden_node_features,
         )
+        graph.graph_id_str = graph_id
+        self.set_cached(graph_id, graph)
+        return graph

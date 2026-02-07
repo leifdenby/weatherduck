@@ -11,12 +11,66 @@ __all__ = ["GraphProvider"]
 class GraphProvider(ABC):
     """Abstract base class for building WeatherDuck graphs."""
 
+    def __init__(self, *, cache: str = "in_memory") -> None:
+        """Initialize the graph provider.
+
+        Parameters
+        ----------
+        cache : str, optional
+            Cache mode identifier. The default "in_memory" uses a dict on the
+            instance for caching.
+
+        Returns
+        -------
+        None
+        """
+        self.cache = cache
+        self._cache: dict[str, HeteroData] = {}
+
+    def get_cached(self, graph_id: str) -> HeteroData | None:
+        """Return a cached graph for the given id, if present.
+
+        Parameters
+        ----------
+        graph_id : str
+            Graph identifier key for the cache.
+
+        Returns
+        -------
+        HeteroData | None
+            Cached graph when available, otherwise None.
+        """
+        if self.cache != "in_memory":
+            return None
+        return self._cache.get(graph_id)
+
+    def set_cached(self, graph_id: str, graph: HeteroData) -> None:
+        """Store a graph in the cache.
+
+        Parameters
+        ----------
+        graph_id : str
+            Graph identifier key for the cache.
+        graph : HeteroData
+            Graph to store in the cache.
+
+        Returns
+        -------
+        None
+        """
+        if self.cache != "in_memory":
+            return
+        self._cache[graph_id] = graph
+
     @abstractmethod
-    def __call__(self, coords: np.ndarray) -> HeteroData:
+    def __call__(self, domain_id: str, coords: np.ndarray) -> HeteroData:
         """Build and return a WeatherDuck-compatible graph.
 
         Parameters
         ----------
+        domain_id : str
+            Identifier for the data domain. Providers may combine this with their
+            parameters to construct a graph id for caching and reuse.
         coords : np.ndarray
             Spatial coordinates for data nodes, shaped [N_data, 2]. Implementations
             may use this to infer node counts or construct geometry-aware edges.
