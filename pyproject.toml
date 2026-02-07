@@ -11,7 +11,7 @@ dependencies = [
     "torch>=2.9.1",
     "fiddle>=0.3.0",
     "pytorch-lightning>=2.6.0",
-    "torch-geometric>=2.7.0",
+    "torch-geometric>=2.3.1",
     "loguru>=0.7.3",
 ]
 
@@ -30,7 +30,7 @@ dev = [
     "pytest>=9.0.2",
 ]
 neural-lam = [
-    "neural-lam",
+    "neural-lam>=0.5.0",
 ]
 wmg = [
     "weather-model-graphs>=0.3.0",
@@ -41,6 +41,3 @@ profile = "black"
 line_length = 88
 combine_as_imports = true
 known_first_party = ["weatherduck"]
-
-[tool.uv.sources]
-neural-lam = { git = "https://github.com/leifdenby/neural-lam", rev = "feat/graph-with-dataset" }

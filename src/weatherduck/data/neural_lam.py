@@ -1,17 +1,136 @@
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
-from typing import Any, Dict
+from pathlib import Path
+from typing import Any, Dict, Iterable
 
 import torch
 from neural_lam.datastore.mdp import MDPDatastore
-from neural_lam.weather_dataset import WeatherDataset, WeatherDatasetWithGraph
+from neural_lam.weather_dataset import WeatherDataset
 from torch.utils.data import Dataset
+from torch.utils.data._utils.collate import default_collate
 from torch_geometric.data import Batch, HeteroData
 
 from .base import BaseWeatherDataModule
+from .neural_lam_graph_data import build_graph_sizes, load_graph
 
 __all__ = ["MDPDataModule"]
+
+
+class WeatherDatasetWithGraph(Dataset):
+    """Dataset wrapper that pairs weather samples with a static graph.
+
+    Parameters
+    ----------
+    weather_dataset : WeatherDataset
+        Dataset providing weather samples.
+    graph_name : str
+        Graph directory name under the datastore root.
+    device : str, optional
+        Device for loading graph tensors, by default "cpu".
+
+    Returns
+    -------
+    None
+    """
+
+    def __init__(
+        self,
+        weather_dataset: WeatherDataset,
+        graph_name: str,
+        device: str = "cpu",
+    ) -> None:
+        super().__init__()
+        self.weather_dataset = weather_dataset
+        self.graph_name = graph_name
+        self.device = device
+        self.datastore = weather_dataset.datastore
+
+        self.graph_dir_path = Path(self.datastore.root_path) / "graph" / self.graph_name
+
+        graph_edges_and_features = load_graph(
+            graph_dir_path=self.graph_dir_path, device=self.device
+        )
+        self.graph_edges_and_features = graph_edges_and_features
+        self.graph_sizes = build_graph_sizes(graph_edges_and_features)
+        self.graph_payload = graph_edges_and_features.as_batch_dict()
+        self.hierarchical = self.graph_sizes.hierarchical
+
+    def __len__(self) -> int:
+        """Return dataset length.
+
+        Returns
+        -------
+        int
+            Number of samples.
+        """
+        return len(self.weather_dataset)
+
+    def __getitem__(self, idx: int) -> Dict[str, Any]:
+        """Return a sample with attached static graph payload.
+
+        Parameters
+        ----------
+        idx : int
+            Sample index.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Weather sample including "graph" payload.
+        """
+        sample = self.weather_dataset[idx]
+        if isinstance(sample, dict):
+            sample = sample.copy()
+        elif isinstance(sample, tuple):
+            if len(sample) != 4:
+                raise ValueError(
+                    "Expected tuple sample with 4 entries "
+                    "(init_states, target_states, forcing_features, batch_times)."
+                )
+            sample = {
+                "init_states": sample[0],
+                "target_states": sample[1],
+                "forcing_features": sample[2],
+                "batch_times": sample[3],
+            }
+        else:
+            raise TypeError(
+                "Expected sample to be dict or tuple, got " f"{type(sample).__name__}."
+            )
+        sample["graph"] = copy.deepcopy(self.graph_payload)
+        return sample
+
+    @staticmethod
+    def collate_fn(batch: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
+        """Collate function that keeps a single copy of the static graph.
+
+        Parameters
+        ----------
+        batch : Iterable[Dict[str, Any]]
+            Samples to collate.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Collated batch with a shared "graph" entry.
+        """
+        batch = list(batch)
+        if not batch:
+            raise ValueError("Empty batch provided to collate_fn.")
+
+        graphs = [entry.get("graph") for entry in batch]
+        if any(graph is None for graph in graphs):
+            raise ValueError("Graph entry missing from batch sample.")
+
+        data_without_graph = [
+            {key: value for key, value in entry.items() if key != "graph"}
+            for entry in batch
+        ]
+        collated_data = default_collate(data_without_graph)
+        collated_data["graph"] = graphs[0]
+        return collated_data
 
 
 def _graph_payload_to_heterodata(graph_payload: Dict[str, Any]) -> HeteroData:
