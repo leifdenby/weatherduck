@@ -34,18 +34,35 @@ def _graph_payload_to_heterodata(graph_payload: Dict[str, Any]) -> HeteroData:
 
     graph = HeteroData()
     m2g_edge_index = graph_payload["m2g_edge_index"]
-    num_data_nodes = (
-        int(torch.max(m2g_edge_index).item()) + 1 if m2g_edge_index.numel() > 0 else 0
-    )
+    g2m_edge_index = graph_payload["g2m_edge_index"]
+    mesh_static = graph_payload["mesh_static_features"]
+    num_hidden_nodes = mesh_static.shape[0]
+    if m2g_edge_index.numel() == 0 or g2m_edge_index.numel() == 0:
+        num_data_nodes = 0
+    else:
+        max_grid_idx = int(
+            torch.max(torch.cat([g2m_edge_index[0], m2g_edge_index[1]], dim=0)).item()
+        )
+        num_data_nodes = max_grid_idx - num_hidden_nodes + 1
+        if num_data_nodes < 0:
+            raise ValueError("Computed negative data node count from graph indices.")
     graph["data"].x = torch.zeros(num_data_nodes, 0, device=m2g_edge_index.device)
 
-    mesh_static = graph_payload["mesh_static_features"]
+    if mesh_static.shape[0] != num_hidden_nodes:
+        raise ValueError(
+            "Mesh static features do not match hidden node count: "
+            f"{mesh_static.shape[0]} != {num_hidden_nodes}."
+        )
     graph["hidden"].x = mesh_static
 
-    graph["data", "to", "hidden"].edge_index = graph_payload["g2m_edge_index"]
+    g2m_edge = g2m_edge_index.clone()
+    g2m_edge[0] = g2m_edge[0] - num_hidden_nodes
+    graph["data", "to", "hidden"].edge_index = g2m_edge
     graph["data", "to", "hidden"].edge_attr = graph_payload["g2m_features"]
 
-    graph["hidden", "to", "data"].edge_index = graph_payload["m2g_edge_index"]
+    m2g_edge = m2g_edge_index.clone()
+    m2g_edge[1] = m2g_edge[1] - num_hidden_nodes
+    graph["hidden", "to", "data"].edge_index = m2g_edge
     graph["hidden", "to", "data"].edge_attr = graph_payload["m2g_features"]
 
     graph["hidden", "to", "hidden"].edge_index = graph_payload["m2m_edge_index"]
@@ -111,6 +128,11 @@ class NeuralLamWeatherDataset(Dataset):
         graph["data"].x_static = torch.zeros(num_nodes, 0, device=init_states.device)
         graph["data"].x = init_states[:, :, -1]
         graph["data"].y = target_states
+        if graph["data"].num_nodes != num_nodes:
+            raise ValueError(
+                "Graph/data node count mismatch: "
+                f"{graph['data'].num_nodes} != {num_nodes}."
+            )
         return graph
 
     def collate_fn(self, graphs: list[HeteroData]) -> Batch:
