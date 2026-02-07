@@ -9,10 +9,10 @@ import torch
 
 from weatherduck import (
     AutoRegressiveForecaster,
-    DummyGraphBuilder,
+    DummyGraphProvider,
     DummyTimeseriesWeatherDataModule,
     MDPDataModule,
-    WMGGraphBuilder,
+    WMGGraphProvider,
     build_encode_process_decode_model,
 )
 
@@ -69,7 +69,7 @@ def experiment_factory() -> AutoregressiveExperiment:
     hidden_dim = 32
 
     dm = DummyTimeseriesWeatherDataModule(
-        graph_builder=DummyGraphBuilder(),
+        graph_builder=DummyGraphProvider(),
         num_samples=4,
         num_data_nodes=8,
         n_state_features=n_state_features,
@@ -123,7 +123,7 @@ def test_autoregressive_forecaster_runs_wmg_graph_builder():
     """
     pytest.importorskip("weather_model_graphs")
     config = experiment_factory()
-    config.data.graph_builder = WMGGraphBuilder(kind="keisler", mesh_node_distance=1.0)
+    config.data.graph_builder = WMGGraphProvider(kind="keisler", mesh_node_distance=1.0)
     experiment = fdl.build(config)
     experiment.run()
 
@@ -140,7 +140,7 @@ def test_autoregressive_forecaster_runs_neural_lam_datamodule():
     None
     """
     pytest.importorskip("neural_lam")
-    from weatherduck.graphs import WMGGraphBuilder
+    from weatherduck.graphs import WMGGraphProvider
 
     default_config = (
         Path(__file__).resolve().parent
@@ -157,7 +157,7 @@ def test_autoregressive_forecaster_runs_neural_lam_datamodule():
     config = experiment_factory()
     config.data = MDPDataModule(
         config_path=str(config_path),
-        graph_builder=WMGGraphBuilder(mesh_node_distance=10.0e3),
+        graph_builder=WMGGraphProvider(mesh_node_distance=10.0e3),
         ar_steps_train=2,
         ar_steps_eval=2,
         batch_size=2,

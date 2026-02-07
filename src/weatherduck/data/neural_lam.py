@@ -9,7 +9,7 @@ from neural_lam.weather_dataset import WeatherDataset
 from torch.utils.data import Dataset
 from torch_geometric.data import Batch, HeteroData
 
-from ..graphs import GraphBuilder
+from ..graphs import GraphProvider
 from .base import BaseWeatherDataModule
 
 __all__ = ["MDPDataModule"]
@@ -18,15 +18,15 @@ __all__ = ["MDPDataModule"]
 class NeuralLamWeatherGraphDataset(Dataset):
     """WeatherDataset wrapper that yields WeatherDuck HeteroData."""
 
-    def __init__(self, dataset: WeatherDataset, graph_builder: GraphBuilder):
+    def __init__(self, dataset: WeatherDataset, graph_builder: GraphProvider):
         """Initialize the wrapper dataset.
 
         Parameters
         ----------
         dataset : WeatherDataset
             Neural-lam dataset instance.
-        graph_builder : GraphBuilder
-            Graph builder used to construct topology from coordinates.
+        graph_builder : GraphProvider
+            Graph provider used to construct topology from coordinates.
 
         Returns
         -------
@@ -141,7 +141,7 @@ class MDPDataModule(BaseWeatherDataModule):
     """DataModule for neural-lam MDPDatastore-backed datasets."""
 
     config_path: str
-    graph_builder: GraphBuilder
+    graph_builder: GraphProvider
     ar_steps_train: int = 3
     ar_steps_eval: int = 25
     standardize: bool = True

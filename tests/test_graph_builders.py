@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from weatherduck.data.dummy import DummyWeatherDataset
-from weatherduck.graphs import DummyGraphBuilder, WMGGraphBuilder
+from weatherduck.graphs import DummyGraphProvider, WMGGraphProvider
 
 
 def test_dummy_graph_builder_from_dataset():
@@ -23,7 +23,7 @@ def test_dummy_graph_builder_from_dataset():
         n_input_data_features=4,
         n_output_data_features=2,
         n_hidden_data_features=0,
-        graph_builder=DummyGraphBuilder(),
+        graph_builder=DummyGraphProvider(),
     )
     graph = ds.graphs[0]
     assert graph["data"].num_nodes == num_data_nodes
@@ -53,7 +53,7 @@ def test_wmg_graph_builder_from_dataset():
         n_input_data_features=4,
         n_output_data_features=2,
         n_hidden_data_features=0,
-        graph_builder=WMGGraphBuilder(mesh_node_distance=1.0),
+        graph_builder=WMGGraphProvider(mesh_node_distance=1.0),
     )
     graph = ds.graphs[0]
     assert graph["data"].num_nodes == num_data_nodes

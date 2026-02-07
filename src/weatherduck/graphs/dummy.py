@@ -4,9 +4,9 @@ import numpy as np
 import torch
 from torch_geometric.data import HeteroData
 
-from .base import GraphBuilder
+from .base import GraphProvider
 
-__all__ = ["build_dummy_weather_graph", "DummyGraphBuilder"]
+__all__ = ["build_dummy_weather_graph", "DummyGraphProvider"]
 
 
 def build_dummy_weather_graph(
@@ -66,7 +66,7 @@ def build_dummy_weather_graph(
     return graph
 
 
-class DummyGraphBuilder(GraphBuilder):
+class DummyGraphProvider(GraphProvider):
     """Build dummy graphs for quick iterations."""
 
     def __init__(
@@ -78,7 +78,7 @@ class DummyGraphBuilder(GraphBuilder):
         n_data_node_features: int = 0,
         n_hidden_node_features: int = 0,
     ) -> None:
-        """Initialize the dummy graph builder.
+        """Initialize the dummy graph provider.
 
         Parameters
         ----------

@@ -3,7 +3,7 @@ import torch
 from torch.utils.data import Dataset
 from torch_geometric.data import Batch, HeteroData
 
-from ..graphs import GraphBuilder
+from ..graphs import GraphProvider
 from .base import BaseWeatherDataModule
 
 
@@ -38,7 +38,7 @@ class DummyWeatherDataset(Dataset):
         n_input_data_features: int,
         n_output_data_features: int,
         n_hidden_data_features: int,
-        graph_builder: GraphBuilder,
+        graph_builder: GraphProvider,
         n_unique_graphs: int = 1,
     ):
         """Initialize the dummy dataset.
@@ -55,8 +55,8 @@ class DummyWeatherDataset(Dataset):
             Output feature dimension.
         n_hidden_data_features : int
             Hidden node feature dimension.
-        graph_builder : GraphBuilder
-            Graph builder used to create topology.
+        graph_builder : GraphProvider
+            Graph provider used to create topology.
         n_unique_graphs : int, optional
             Number of unique graphs, by default 1.
 
@@ -160,7 +160,7 @@ class TimeseriesDummyWeatherDataset(Dataset):
         n_static_features: int,
         ar_steps: int,
         n_hidden_data_features: int,
-        graph_builder: GraphBuilder,
+        graph_builder: GraphProvider,
         n_unique_graphs: int = 1,
     ):
         """Initialize the timeseries dummy dataset.
@@ -181,8 +181,8 @@ class TimeseriesDummyWeatherDataset(Dataset):
             Autoregressive rollout length.
         n_hidden_data_features : int
             Hidden node feature dimension.
-        graph_builder : GraphBuilder
-            Graph builder used to create topology.
+        graph_builder : GraphProvider
+            Graph provider used to create topology.
         n_unique_graphs : int, optional
             Number of unique graphs, by default 1.
 
@@ -288,7 +288,7 @@ class DummyWeatherDataModule(BaseWeatherDataModule):
 
     def __init__(
         self,
-        graph_builder: GraphBuilder,
+        graph_builder: GraphProvider,
         num_samples: int = 128,
         num_data_nodes: int | dict[int, int] = 64,
         n_input_data_features: int = 8,
@@ -301,8 +301,8 @@ class DummyWeatherDataModule(BaseWeatherDataModule):
 
         Parameters
         ----------
-        graph_builder : GraphBuilder
-            Graph builder used to create topology.
+        graph_builder : GraphProvider
+            Graph provider used to create topology.
         num_samples : int, optional
             Number of samples, by default 128.
         num_data_nodes : int | dict[int, int], optional
@@ -365,7 +365,7 @@ class DummyTimeseriesWeatherDataModule(BaseWeatherDataModule):
 
     def __init__(
         self,
-        graph_builder: GraphBuilder,
+        graph_builder: GraphProvider,
         num_samples: int = 128,
         num_data_nodes: int | dict[int, int] = 64,
         n_state_features: int = 4,
@@ -380,8 +380,8 @@ class DummyTimeseriesWeatherDataModule(BaseWeatherDataModule):
 
         Parameters
         ----------
-        graph_builder : GraphBuilder
-            Graph builder used to create topology.
+        graph_builder : GraphProvider
+            Graph provider used to create topology.
         num_samples : int, optional
             Number of samples, by default 128.
         num_data_nodes : int | dict[int, int], optional

@@ -11,13 +11,13 @@ from weather_model_graphs.create.archetype import (
     create_oskarsson_hierarchical_graph,
 )
 
-from .base import GraphBuilder
+from .base import GraphProvider
 
-__all__ = ["WMGGraphBuilder"]
+__all__ = ["WMGGraphProvider"]
 
 
-class WMGGraphBuilder(GraphBuilder):
-    """Build WeatherDuck graphs using weather-model-graphs utilities."""
+class WMGGraphProvider(GraphProvider):
+    """Provide WeatherDuck graphs using weather-model-graphs utilities."""
 
     def __init__(
         self,
@@ -29,7 +29,7 @@ class WMGGraphBuilder(GraphBuilder):
         coords_crs=None,
         graph_crs=None,
     ) -> None:
-        """Initialize the WMG graph builder.
+        """Initialize the WMG graph provider.
 
         Parameters
         ----------

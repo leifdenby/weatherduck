@@ -19,7 +19,7 @@ Weatherduck was built to be a lightweight, hydra-free scaffold that mirrors [neu
 - `src/weatherduck/step_predictor.py`: single-step components (`EncodeProcessDecodeModel`, `SingleNodesetEncoder`/`Processor`/`SingleNodesetDecoder`, trainable feature utilities).
 - `src/weatherduck/lightning.py`: Lightning wrapper (`WeatherDuckModule`) around any model.
 - `src/weatherduck/ar_forecaster.py`: `AutoRegressiveForecaster` that rolls out multi-step predictions with a provided step predictor.
-- `src/weatherduck/graphs/`: graph builder interfaces and implementations (`GraphBuilder`, `DummyGraphBuilder`, `WMGGraphBuilder`).
+- `src/weatherduck/graphs/`: graph provider interfaces and implementations (`GraphProvider`, `DummyGraphProvider`, `WMGGraphProvider`).
 - `src/weatherduck/data/base.py`: `BaseWeatherDataModule` shared datamodule base class that standardizes split handling and GeoDataLoader wiring for datasets that yield `HeteroData`.
 - `src/weatherduck/data/dummy.py`: dummy dataset implementations and `DummyWeatherDataModule`/`DummyTimeseriesWeatherDataModule` (built on the base class).
 - `src/weatherduck/data/neural_lam.py`: neural-lam-backed `MDPDataModule` and dataset adapter (currently non-hierarchical graphs only).
@@ -67,32 +67,32 @@ This uses dummy graphs/data and should execute end-to-end on CPU or MPS.
 
 Shapes follow the convention: first dim = nodes, last dim = time (for sequences), this is required because PyG data-loader batches graphs along the first dimension.
 
-## Running tests
-```bash
-uv run pytest
-```
-
-## Graph builders
-Weatherduck constructs graphs through a `GraphBuilder` interface. A `GraphBuilder`
+## Graph providers
+Weatherduck constructs graphs through a `GraphProvider` interface. A `GraphProvider`
 is a small callable that takes data-node coordinates and returns a `HeteroData`
 graph matching Weatherduck’s expected node/edge types and shapes. This keeps
 graph construction independent from datasets and lets you swap in different
 graph generators without changing data pipelines.
 
 Implementations:
-- `DummyGraphBuilder`: produces a minimal hetero graph for quick iteration.
-- `WMGGraphBuilder`: uses `weather-model-graphs` to build a graph from spatial coordinates.
+- `DummyGraphProvider`: produces a minimal hetero graph for quick iteration.
+- `WMGGraphProvider`: uses `weather-model-graphs` to build a graph from spatial coordinates.
 
 Example:
 ```python
-from weatherduck import DummyGraphBuilder, DummyWeatherDataModule
+from weatherduck import DummyGraphProvider, DummyWeatherDataModule
 
 dm = DummyWeatherDataModule(
-    graph_builder=DummyGraphBuilder(),
+    graph_builder=DummyGraphProvider(),
     num_samples=64,
     num_data_nodes=64,
     n_input_data_features=8,
     n_output_data_features=8,
     n_hidden_data_features=4,
 )
+```
+
+## Running tests
+```bash
+uv run pytest
 ```

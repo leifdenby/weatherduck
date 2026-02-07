@@ -5,10 +5,10 @@ from abc import ABC, abstractmethod
 import numpy as np
 from torch_geometric.data import HeteroData
 
-__all__ = ["GraphBuilder"]
+__all__ = ["GraphProvider"]
 
 
-class GraphBuilder(ABC):
+class GraphProvider(ABC):
     """Abstract base class for building WeatherDuck graphs."""
 
     @abstractmethod
