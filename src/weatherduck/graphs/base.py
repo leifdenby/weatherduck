@@ -72,8 +72,9 @@ class GraphProvider(ABC):
             Identifier for the data domain. Providers may combine this with their
             parameters to construct a graph id for caching and reuse.
         coords : np.ndarray
-            Spatial coordinates for data nodes, shaped [N_data, 2]. Implementations
-            may use this to infer node counts or construct geometry-aware edges.
+            Spatial coordinates of data nodes, shaped [N_data, F_data]. The
+            coordinate values are also stored as data-node features (e.g. as
+            ``graph["data"].x``) in the returned graph.
 
         Returns
         -------

@@ -69,7 +69,7 @@ class WMGGraphProvider(GraphProvider):
         domain_id : str
             Identifier for the data domain.
         coords : np.ndarray
-            Array of shape [N, 2] with spatial coordinates.
+            Array of shape [N_data, F_data] with spatial coordinates.
 
         Returns
         -------
@@ -80,9 +80,17 @@ class WMGGraphProvider(GraphProvider):
         cached = self.get_cached(graph_id)
         if cached is not None:
             return cached.clone()
+        if coords.ndim != 2:
+            raise ValueError("coords must be a 2D array.")
         nx_graph = self._build_networkx_graph(coords)
         graph = _to_heterodata(nx_graph)
         graph.graph_id_str = graph_id
+        if graph["data"].num_nodes != coords.shape[0]:
+            raise ValueError(
+                "Graph/data node count mismatch: "
+                f"{graph['data'].num_nodes} != {coords.shape[0]}."
+            )
+        graph["data"].x = torch.as_tensor(coords, dtype=torch.float32)
         self.set_cached(graph_id, graph)
         return graph
 
