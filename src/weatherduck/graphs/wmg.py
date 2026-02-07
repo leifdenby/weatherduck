@@ -5,6 +5,11 @@ from typing import Literal
 import numpy as np
 import torch
 from torch_geometric.data import HeteroData
+from weather_model_graphs.create.archetype import (
+    create_graphcast_graph,
+    create_keisler_graph,
+    create_oskarsson_hierarchical_graph,
+)
 
 from .base import GraphBuilder
 
@@ -18,7 +23,7 @@ class WMGGraphBuilder(GraphBuilder):
         self,
         *,
         kind: Literal["keisler", "graphcast", "oskarsson_hierarchical"] = "graphcast",
-        mesh_node_distance: float = 3.0,
+        mesh_node_distance: float,
         level_refinement_factor: int = 3,
         max_num_levels: int | None = None,
         coords_crs=None,
@@ -31,7 +36,7 @@ class WMGGraphBuilder(GraphBuilder):
         kind : Literal["keisler", "graphcast", "oskarsson_hierarchical"], optional
             Graph archetype to build.
         mesh_node_distance : float, optional
-            Base mesh node spacing.
+            Base mesh node spacing in coordinate units.
         level_refinement_factor : int, optional
             Refinement factor between mesh levels.
         max_num_levels : int | None, optional
@@ -81,11 +86,6 @@ class WMGGraphBuilder(GraphBuilder):
         networkx.DiGraph
             Constructed networkx graph.
         """
-        from weather_model_graphs.create.archetype import (
-            create_graphcast_graph,
-            create_keisler_graph,
-            create_oskarsson_hierarchical_graph,
-        )
 
         if self.kind == "keisler":
             return create_keisler_graph(
