@@ -38,7 +38,7 @@ class DummyWeatherDataset(Dataset):
         n_input_data_features: int,
         n_output_data_features: int,
         n_hidden_data_features: int,
-        graph_builder: GraphProvider,
+        graph_provider: GraphProvider,
         n_unique_graphs: int = 1,
     ):
         """Initialize the dummy dataset.
@@ -55,7 +55,7 @@ class DummyWeatherDataset(Dataset):
             Output feature dimension.
         n_hidden_data_features : int
             Hidden node feature dimension.
-        graph_builder : GraphProvider
+        graph_provider : GraphProvider
             Graph provider used to create topology.
         n_unique_graphs : int, optional
             Number of unique graphs, by default 1.
@@ -69,7 +69,7 @@ class DummyWeatherDataset(Dataset):
         self.n_input_data_features = n_input_data_features
         self.n_output_data_features = n_output_data_features
         self.n_hidden_data_features = n_hidden_data_features
-        self.graph_builder = graph_builder
+        self.graph_provider = graph_provider
         self.n_unique_graphs = n_unique_graphs
         self.graphs: list[HeteroData] = []
         for gid in range(n_unique_graphs):
@@ -83,7 +83,7 @@ class DummyWeatherDataset(Dataset):
                     f"Generated coords has {coords.shape[0]} nodes but dataset expects {num_nodes}."
                 )
             domain_id = f"dummy-{gid}"
-            g = self.graph_builder(domain_id=domain_id, coords=coords)
+            g = self.graph_provider(domain_id=domain_id, coords=coords)
             g.graph_id = torch.tensor([gid], dtype=torch.long)
             self.graphs.append(g)
 
@@ -161,7 +161,7 @@ class TimeseriesDummyWeatherDataset(Dataset):
         n_static_features: int,
         ar_steps: int,
         n_hidden_data_features: int,
-        graph_builder: GraphProvider,
+        graph_provider: GraphProvider,
         n_unique_graphs: int = 1,
     ):
         """Initialize the timeseries dummy dataset.
@@ -182,7 +182,7 @@ class TimeseriesDummyWeatherDataset(Dataset):
             Autoregressive rollout length.
         n_hidden_data_features : int
             Hidden node feature dimension.
-        graph_builder : GraphProvider
+        graph_provider : GraphProvider
             Graph provider used to create topology.
         n_unique_graphs : int, optional
             Number of unique graphs, by default 1.
@@ -198,7 +198,7 @@ class TimeseriesDummyWeatherDataset(Dataset):
         self.n_static_features = n_static_features
         self.ar_steps = ar_steps
         self.n_hidden_data_features = n_hidden_data_features
-        self.graph_builder = graph_builder
+        self.graph_provider = graph_provider
         self.n_unique_graphs = n_unique_graphs
 
         self.graphs: list[HeteroData] = []
@@ -214,7 +214,7 @@ class TimeseriesDummyWeatherDataset(Dataset):
                     f"Generated coords has {coords.shape[0]} nodes but dataset expects {num_nodes}."
                 )
             domain_id = f"dummy-timeseries-{gid}"
-            g = self.graph_builder(domain_id=domain_id, coords=coords)
+            g = self.graph_provider(domain_id=domain_id, coords=coords)
             g.graph_id = torch.tensor([gid], dtype=torch.long)
             self.graphs.append(g)
 
@@ -290,7 +290,7 @@ class DummyWeatherDataModule(BaseWeatherDataModule):
 
     def __init__(
         self,
-        graph_builder: GraphProvider,
+        graph_provider: GraphProvider,
         num_samples: int = 128,
         num_data_nodes: int | dict[int, int] = 64,
         n_input_data_features: int = 8,
@@ -303,7 +303,7 @@ class DummyWeatherDataModule(BaseWeatherDataModule):
 
         Parameters
         ----------
-        graph_builder : GraphProvider
+        graph_provider : GraphProvider
             Graph provider used to create topology.
         num_samples : int, optional
             Number of samples, by default 128.
@@ -330,7 +330,7 @@ class DummyWeatherDataModule(BaseWeatherDataModule):
         self.n_input_data_features = n_input_data_features
         self.n_output_data_features = n_output_data_features
         self.n_hidden_data_features = n_hidden_data_features
-        self.graph_builder = graph_builder
+        self.graph_provider = graph_provider
         self.n_unique_graphs = n_unique_graphs
 
     def get_dataset(self, split: str) -> Dataset:
@@ -355,7 +355,7 @@ class DummyWeatherDataModule(BaseWeatherDataModule):
             n_input_data_features=self.n_input_data_features,
             n_output_data_features=self.n_output_data_features,
             n_hidden_data_features=self.n_hidden_data_features,
-            graph_builder=self.graph_builder,
+            graph_provider=self.graph_provider,
             n_unique_graphs=self.n_unique_graphs,
         )
 
@@ -442,6 +442,6 @@ class DummyTimeseriesWeatherDataModule(BaseWeatherDataModule):
             n_static_features=self.n_static_features,
             ar_steps=self.ar_steps,
             n_hidden_data_features=self.n_hidden_data_features,
-            graph_builder=self.graph_provider,
+            graph_provider=self.graph_provider,
             n_unique_graphs=self.n_unique_graphs,
         )

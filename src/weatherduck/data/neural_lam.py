@@ -18,14 +18,14 @@ __all__ = ["MDPDataModule"]
 class NeuralLamWeatherGraphDataset(Dataset):
     """WeatherDataset wrapper that yields WeatherDuck HeteroData."""
 
-    def __init__(self, dataset: WeatherDataset, graph_builder: GraphProvider):
+    def __init__(self, dataset: WeatherDataset, graph_provider: GraphProvider):
         """Initialize the wrapper dataset.
 
         Parameters
         ----------
         dataset : WeatherDataset
             Neural-lam dataset instance.
-        graph_builder : GraphProvider
+        graph_provider : GraphProvider
             Graph provider used to construct topology from coordinates.
 
         Returns
@@ -33,13 +33,13 @@ class NeuralLamWeatherGraphDataset(Dataset):
         None
         """
         self.dataset = dataset
-        self.graph_builder = graph_builder
+        self.graph_provider = graph_provider
         coords = np.asarray(self.dataset.datastore.get_xy("state", stacked=True))
         if coords.ndim != 2 or coords.shape[1] != 2:
             raise ValueError("Expected coords with shape [N, 2] from datastore.get_xy.")
         self.coords = coords
         domain_id = f"mdp:{self.dataset.datastore.root_path}"
-        self.graph = self.graph_builder(domain_id=domain_id, coords=self.coords)
+        self.graph = self.graph_provider(domain_id=domain_id, coords=self.coords)
         if self.graph["data"].num_nodes != self.coords.shape[0]:
             raise ValueError(
                 "Graph/data node count mismatch: "
@@ -142,7 +142,7 @@ class MDPDataModule(BaseWeatherDataModule):
     """DataModule for neural-lam MDPDatastore-backed datasets."""
 
     config_path: str
-    graph_builder: GraphProvider
+    graph_provider: GraphProvider
     ar_steps_train: int = 3
     ar_steps_eval: int = 25
     standardize: bool = True
@@ -183,4 +183,4 @@ class MDPDataModule(BaseWeatherDataModule):
             num_past_forcing_steps=self.num_past_forcing_steps,
             num_future_forcing_steps=self.num_future_forcing_steps,
         )
-        return NeuralLamWeatherGraphDataset(base, graph_builder=self.graph_builder)
+        return NeuralLamWeatherGraphDataset(base, graph_provider=self.graph_provider)

@@ -7,7 +7,7 @@ from torch_geometric.data import HeteroData
 from torch_geometric.nn import MessagePassing
 
 __all__ = [
-    "make_mlp",
+    "TwoLayerMLP",
     "TrainableFeatures",
     "TrainableFeatureManager",
     "run_message_op",
@@ -18,28 +18,46 @@ __all__ = [
 ]
 
 
-def make_mlp(in_dim: int, hidden_dim: int, out_dim: int) -> nn.Sequential:
-    """Create a simple 2-layer MLP with GELU activation.
+class TwoLayerMLP(nn.Module):
+    """Two-layer MLP with GELU activation."""
 
-    Parameters
-    ----------
-    in_dim : int
-        Input feature dimension.
-    hidden_dim : int
-        Hidden layer size.
-    out_dim : int
-        Output feature dimension.
+    def __init__(self, in_dim: int, hidden_dim: int, out_dim: int) -> None:
+        """Initialize the MLP.
 
-    Returns
-    -------
-    nn.Sequential
-        MLP module.
-    """
-    return nn.Sequential(
-        nn.Linear(in_dim, hidden_dim),
-        nn.GELU(),
-        nn.Linear(hidden_dim, out_dim),
-    )
+        Parameters
+        ----------
+        in_dim : int
+            Input feature dimension.
+        hidden_dim : int
+            Hidden layer size.
+        out_dim : int
+            Output feature dimension.
+
+        Returns
+        -------
+        None
+        """
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(in_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, out_dim),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply the MLP.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input tensor.
+
+        Returns
+        -------
+        torch.Tensor
+            Output tensor.
+        """
+        return self.net(x)
 
 
 class TrainableFeatures(nn.Module):

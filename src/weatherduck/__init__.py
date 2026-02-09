@@ -28,7 +28,7 @@ from .step_predictor import (
     SingleNodesetEncoder,
     TrainableFeatureManager,
     TrainableFeatures,
-    make_mlp,
+    TwoLayerMLP,
 )
 
 __all__ = [
@@ -54,6 +54,6 @@ __all__ = [
     "build_encode_process_decode_model",
     "experiment_factory",
     "autoregressive_experiment_factory",
-    "make_mlp",
+    "TwoLayerMLP",
     "main",
 ]

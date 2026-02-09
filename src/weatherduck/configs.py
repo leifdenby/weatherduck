@@ -17,7 +17,7 @@ from .step_predictor import (
     SingleNodesetDecoder,
     SingleNodesetEncoder,
     TrainableFeatureManager,
-    make_mlp,
+    TwoLayerMLP,
 )
 
 __all__ = [
@@ -52,10 +52,10 @@ def build_encode_process_decode_model(
         EncodeProcessDecodeModel configured with the requested dimensions.
     """
     encoder = SingleNodesetEncoder(
-        embedder_src=make_mlp(
+        embedder_src=TwoLayerMLP(
             n_input_data_features + n_input_trainable_features, hidden_dim, hidden_dim
         ),
-        embedder_dst=make_mlp(
+        embedder_dst=TwoLayerMLP(
             n_hidden_data_features + n_hidden_trainable_features, hidden_dim, hidden_dim
         ),
         message_op=SAGEConv((hidden_dim, hidden_dim), hidden_dim),
@@ -66,12 +66,12 @@ def build_encode_process_decode_model(
         hidden_dim=hidden_dim,
     )
     decoder = SingleNodesetDecoder(
-        embedder_src=make_mlp(
+        embedder_src=TwoLayerMLP(
             hidden_dim + n_hidden_data_features + n_hidden_trainable_features,
             hidden_dim,
             hidden_dim,
         ),
-        embedder_dst=make_mlp(
+        embedder_dst=TwoLayerMLP(
             n_input_data_features + n_input_trainable_features, hidden_dim, hidden_dim
         ),
         message_op=SAGEConv((hidden_dim, hidden_dim), hidden_dim),
@@ -150,7 +150,7 @@ def experiment_factory() -> Experiment:
         n_input_data_features=n_input_data_features,
         n_output_data_features=n_output_data_features,
         n_hidden_data_features=n_hidden_data_features,
-        graph_builder=DummyGraphProvider(),
+        graph_provider=DummyGraphProvider(),
         batch_size=4,
     )
 
