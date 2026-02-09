@@ -367,7 +367,7 @@ class DummyTimeseriesWeatherDataModule(BaseWeatherDataModule):
 
     def __init__(
         self,
-        graph_builder: GraphProvider,
+        graph_provider: GraphProvider,
         num_samples: int = 128,
         num_data_nodes: int | dict[int, int] = 64,
         n_state_features: int = 4,
@@ -382,7 +382,7 @@ class DummyTimeseriesWeatherDataModule(BaseWeatherDataModule):
 
         Parameters
         ----------
-        graph_builder : GraphProvider
+        graph_provider : GraphProvider
             Graph provider used to create topology.
         num_samples : int, optional
             Number of samples, by default 128.
@@ -415,7 +415,7 @@ class DummyTimeseriesWeatherDataModule(BaseWeatherDataModule):
         self.n_static_features = n_static_features
         self.ar_steps = ar_steps
         self.n_hidden_data_features = n_hidden_data_features
-        self.graph_builder = graph_builder
+        self.graph_provider = graph_provider
         self.n_unique_graphs = n_unique_graphs
 
     def get_dataset(self, split: str) -> Dataset:
@@ -442,6 +442,6 @@ class DummyTimeseriesWeatherDataModule(BaseWeatherDataModule):
             n_static_features=self.n_static_features,
             ar_steps=self.ar_steps,
             n_hidden_data_features=self.n_hidden_data_features,
-            graph_builder=self.graph_builder,
+            graph_builder=self.graph_provider,
             n_unique_graphs=self.n_unique_graphs,
         )

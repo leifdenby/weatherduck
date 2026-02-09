@@ -69,7 +69,7 @@ def experiment_factory() -> AutoregressiveExperiment:
     hidden_dim = 32
 
     dm = DummyTimeseriesWeatherDataModule(
-        graph_builder=DummyGraphProvider(),
+        graph_provider=DummyGraphProvider(),
         num_samples=4,
         num_data_nodes=8,
         n_state_features=n_state_features,

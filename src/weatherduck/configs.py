@@ -212,7 +212,7 @@ def autoregressive_experiment_factory() -> Experiment:
         n_static_features=n_static_features,
         ar_steps=ar_steps,
         n_hidden_data_features=n_hidden_data_features,
-        graph_builder=DummyGraphProvider(),
+        graph_provider=DummyGraphProvider(),
         batch_size=4,
         n_unique_graphs=2,
     )
