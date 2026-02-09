@@ -1,13 +1,17 @@
+from .base import BaseWeatherDataModule
 from .dummy import (
+    DummyTimeseriesWeatherDataModule,
+    DummyWeatherDataModule,
     DummyWeatherDataset,
     TimeseriesDummyWeatherDataset,
-    TimeseriesWeatherDataModule,
-    WeatherDuckDataModule,
 )
+from .neural_lam import MDPDataModule
 
 __all__ = [
+    "BaseWeatherDataModule",
     "DummyWeatherDataset",
     "TimeseriesDummyWeatherDataset",
-    "WeatherDuckDataModule",
-    "TimeseriesWeatherDataModule",
+    "DummyWeatherDataModule",
+    "DummyTimeseriesWeatherDataModule",
+    "MDPDataModule",
 ]

@@ -1,10 +1,10 @@
-from .base import GraphBuilder
-from .dummy import DummyGraphBuilder, build_dummy_weather_graph
-from .wmg import WMGGraphBuilder
+from .base import GraphProvider
+from .dummy import DummyGraphProvider, build_dummy_weather_graph
+from .wmg import WMGGraphProvider
 
 __all__ = [
-    "GraphBuilder",
-    "DummyGraphBuilder",
+    "GraphProvider",
+    "DummyGraphProvider",
     "build_dummy_weather_graph",
-    "WMGGraphBuilder",
+    "WMGGraphProvider",
 ]

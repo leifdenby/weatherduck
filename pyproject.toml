@@ -11,7 +11,7 @@ dependencies = [
     "torch>=2.9.1",
     "fiddle>=0.3.0",
     "pytorch-lightning>=2.6.0",
-    "torch-geometric>=2.7.0",
+    "torch-geometric>=2.3.1",
     "loguru>=0.7.3",
 ]
 
@@ -28,6 +28,10 @@ dev = [
     "ipykernel>=7.1.0",
     "pre-commit>=4.5.0",
     "pytest>=9.0.2",
+]
+neural-lam = [
+    "neural-lam>=0.5.0",
+    "weather-model-graphs>=0.3.0",
 ]
 wmg = [
     "weather-model-graphs>=0.3.0",

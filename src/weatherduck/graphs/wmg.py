@@ -5,33 +5,39 @@ from typing import Literal
 import numpy as np
 import torch
 from torch_geometric.data import HeteroData
+from weather_model_graphs.create.archetype import (
+    create_graphcast_graph,
+    create_keisler_graph,
+    create_oskarsson_hierarchical_graph,
+)
 
-from .base import GraphBuilder
+from .base import GraphProvider
 
-__all__ = ["WMGGraphBuilder"]
+__all__ = ["WMGGraphProvider"]
 
 
-class WMGGraphBuilder(GraphBuilder):
-    """Build WeatherDuck graphs using weather-model-graphs utilities."""
+class WMGGraphProvider(GraphProvider):
+    """Provide WeatherDuck graphs using weather-model-graphs utilities."""
 
     def __init__(
         self,
         *,
         kind: Literal["keisler", "graphcast", "oskarsson_hierarchical"] = "graphcast",
-        mesh_node_distance: float = 3.0,
+        mesh_node_distance: float,
         level_refinement_factor: int = 3,
         max_num_levels: int | None = None,
         coords_crs=None,
         graph_crs=None,
+        cache: str = "in_memory",
     ) -> None:
-        """Initialize the WMG graph builder.
+        """Initialize the WMG graph provider.
 
         Parameters
         ----------
         kind : Literal["keisler", "graphcast", "oskarsson_hierarchical"], optional
             Graph archetype to build.
         mesh_node_distance : float, optional
-            Base mesh node spacing.
+            Base mesh node spacing in coordinate units.
         level_refinement_factor : int, optional
             Refinement factor between mesh levels.
         max_num_levels : int | None, optional
@@ -40,11 +46,14 @@ class WMGGraphBuilder(GraphBuilder):
             Coordinate CRS of input coords.
         graph_crs : Any, optional
             CRS to use for graph construction.
+        cache : str, optional
+            Cache mode identifier, by default "in_memory".
 
         Returns
         -------
         None
         """
+        super().__init__(cache=cache)
         self.kind = kind
         self.mesh_node_distance = mesh_node_distance
         self.level_refinement_factor = level_refinement_factor
@@ -52,21 +61,74 @@ class WMGGraphBuilder(GraphBuilder):
         self.coords_crs = coords_crs
         self.graph_crs = graph_crs
 
-    def __call__(self, coords: np.ndarray) -> HeteroData:
+    def __call__(self, domain_id: str, coords: np.ndarray) -> HeteroData:
         """Build a graph from spatial coordinates.
 
         Parameters
         ----------
+        domain_id : str
+            Identifier for the data domain.
         coords : np.ndarray
-            Array of shape [N, 2] with spatial coordinates.
+            Array of shape [N_data, F_data] with spatial coordinates.
 
         Returns
         -------
         HeteroData
             WeatherDuck-compatible graph.
         """
+        graph_id = self._build_graph_id(domain_id)
+        cached = self.get_cached(graph_id)
+        if cached is not None:
+            return cached.clone()
+        if coords.ndim != 2:
+            raise ValueError("coords must be a 2D array.")
         nx_graph = self._build_networkx_graph(coords)
-        return _to_heterodata(nx_graph)
+        graph = _to_heterodata(nx_graph)
+        graph.graph_id_str = graph_id
+        if graph["data"].num_nodes != coords.shape[0]:
+            raise ValueError(
+                "Graph/data node count mismatch: "
+                f"{graph['data'].num_nodes} != {coords.shape[0]}."
+            )
+        graph["data"].x = torch.as_tensor(coords, dtype=torch.float32)
+        self.set_cached(graph_id, graph)
+        return graph
+
+    def _build_graph_id(self, domain_id: str) -> str:
+        """Build a graph id from provider parameters and domain id.
+
+        Parameters
+        ----------
+        domain_id : str
+            Identifier for the data domain.
+
+        Returns
+        -------
+        str
+            Stable graph identifier for caching.
+        """
+
+        def _safe(value: object) -> str:
+            text = str(value)
+            cleaned = []
+            for ch in text:
+                if ch.isalnum() or ch in ("-", "_", "."):
+                    cleaned.append(ch)
+                else:
+                    cleaned.append("_")
+            return "".join(cleaned)
+
+        parts = [
+            "wmg",
+            _safe(domain_id),
+            f"kind={_safe(self.kind)}",
+            f"mesh_node_distance={_safe(self.mesh_node_distance)}",
+            f"level_refinement_factor={_safe(self.level_refinement_factor)}",
+            f"max_num_levels={_safe(self.max_num_levels)}",
+            f"coords_crs={_safe(self.coords_crs)}",
+            f"graph_crs={_safe(self.graph_crs)}",
+        ]
+        return "__".join(parts)
 
     def _build_networkx_graph(self, coords: np.ndarray):
         """Build a weather-model-graphs networkx graph.
@@ -81,11 +143,6 @@ class WMGGraphBuilder(GraphBuilder):
         networkx.DiGraph
             Constructed networkx graph.
         """
-        from weather_model_graphs.create.archetype import (
-            create_graphcast_graph,
-            create_keisler_graph,
-            create_oskarsson_hierarchical_graph,
-        )
 
         if self.kind == "keisler":
             return create_keisler_graph(

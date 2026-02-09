@@ -4,16 +4,15 @@ import numpy as np
 import torch
 from torch_geometric.data import HeteroData
 
-from .base import GraphBuilder
+from .base import GraphProvider
 
-__all__ = ["build_dummy_weather_graph", "DummyGraphBuilder"]
+__all__ = ["build_dummy_weather_graph", "DummyGraphProvider"]
 
 
 def build_dummy_weather_graph(
-    num_data_nodes: int = 64,
+    data_coords: np.ndarray,
     num_hidden_nodes: int = 32,
     edge_attr_dim: int = 2,
-    n_data_node_features: int = 0,
     n_hidden_node_features: int = 0,
 ) -> HeteroData:
     """
@@ -21,7 +20,10 @@ def build_dummy_weather_graph(
     data -> hidden, hidden -> hidden, hidden -> data.
     """
     graph = HeteroData()
-    graph["data"].x = torch.randn(num_data_nodes, n_data_node_features)
+    if data_coords.ndim != 2:
+        raise ValueError("data_coords must be a 2D array.")
+    num_data_nodes = data_coords.shape[0]
+    graph["data"].x = torch.as_tensor(data_coords, dtype=torch.float32)
     graph["hidden"].x = torch.randn(num_hidden_nodes, n_hidden_node_features)
 
     def dense_edges(n_src: int, n_dst: int, fanout: int) -> torch.Tensor:
@@ -66,7 +68,7 @@ def build_dummy_weather_graph(
     return graph
 
 
-class DummyGraphBuilder(GraphBuilder):
+class DummyGraphProvider(GraphProvider):
     """Build dummy graphs for quick iterations."""
 
     def __init__(
@@ -75,10 +77,10 @@ class DummyGraphBuilder(GraphBuilder):
         num_data_nodes: int | None = None,
         num_hidden_nodes: int | None = None,
         edge_attr_dim: int = 2,
-        n_data_node_features: int = 0,
         n_hidden_node_features: int = 0,
+        cache: str = "in_memory",
     ) -> None:
-        """Initialize the dummy graph builder.
+        """Initialize the dummy graph provider.
 
         Parameters
         ----------
@@ -88,34 +90,42 @@ class DummyGraphBuilder(GraphBuilder):
             Number of hidden nodes; defaults to half of data nodes.
         edge_attr_dim : int, optional
             Edge attribute dimension.
-        n_data_node_features : int, optional
-            Data node feature dimension.
         n_hidden_node_features : int, optional
             Hidden node feature dimension.
+        cache : str, optional
+            Cache mode identifier, by default "in_memory".
 
         Returns
         -------
         None
         """
+        super().__init__(cache=cache)
         self.num_data_nodes = num_data_nodes
         self.num_hidden_nodes = num_hidden_nodes
         self.edge_attr_dim = edge_attr_dim
-        self.n_data_node_features = n_data_node_features
         self.n_hidden_node_features = n_hidden_node_features
 
-    def __call__(self, coords: np.ndarray) -> HeteroData:
+    def __call__(self, domain_id: str, coords: np.ndarray) -> HeteroData:
         """Build a dummy graph for given coords.
 
         Parameters
         ----------
+        domain_id : str
+            Identifier for the data domain.
         coords : np.ndarray
-            Coordinates array used to infer data node count.
+            Coordinates/features array shaped [N_data, F_data].
 
         Returns
         -------
         HeteroData
             Dummy heterogenous graph.
         """
+        graph_id = f"dummy__{domain_id}"
+        cached = self.get_cached(graph_id)
+        if cached is not None:
+            return cached.clone()
+        if coords.ndim != 2:
+            raise ValueError("coords must be a 2D array.")
         num_data_nodes = (
             coords.shape[0] if self.num_data_nodes is None else self.num_data_nodes
         )
@@ -124,10 +134,12 @@ class DummyGraphBuilder(GraphBuilder):
             if self.num_hidden_nodes is None
             else self.num_hidden_nodes
         )
-        return build_dummy_weather_graph(
-            num_data_nodes=num_data_nodes,
+        graph = build_dummy_weather_graph(
+            data_coords=coords,
             num_hidden_nodes=num_hidden_nodes,
             edge_attr_dim=self.edge_attr_dim,
-            n_data_node_features=self.n_data_node_features,
             n_hidden_node_features=self.n_hidden_node_features,
         )
+        graph.graph_id_str = graph_id
+        self.set_cached(graph_id, graph)
+        return graph

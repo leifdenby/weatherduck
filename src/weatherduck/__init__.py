@@ -6,15 +6,17 @@ from .configs import (
     experiment_factory,
 )
 from .data import (
+    BaseWeatherDataModule,
+    DummyTimeseriesWeatherDataModule,
+    DummyWeatherDataModule,
     DummyWeatherDataset,
+    MDPDataModule,
     TimeseriesDummyWeatherDataset,
-    TimeseriesWeatherDataModule,
-    WeatherDuckDataModule,
 )
 from .graphs import (
-    DummyGraphBuilder,
-    GraphBuilder,
-    WMGGraphBuilder,
+    DummyGraphProvider,
+    GraphProvider,
+    WMGGraphProvider,
     build_dummy_weather_graph,
 )
 from .lightning import WeatherDuckModule
@@ -26,30 +28,32 @@ from .step_predictor import (
     SingleNodesetEncoder,
     TrainableFeatureManager,
     TrainableFeatures,
-    make_mlp,
+    TwoLayerMLP,
 )
 
 __all__ = [
     "AutoRegressiveForecaster",
     "Experiment",
     "EncodeProcessDecodeModel",
+    "build_encode_process_decode_model",
     "WeatherDuckModule",
     "Processor",
     "SingleNodesetDecoder",
     "SingleNodesetEncoder",
     "TrainableFeatureManager",
     "TrainableFeatures",
+    "BaseWeatherDataModule",
     "DummyWeatherDataset",
+    "MDPDataModule",
     "TimeseriesDummyWeatherDataset",
-    "TimeseriesWeatherDataModule",
-    "WeatherDuckDataModule",
+    "DummyTimeseriesWeatherDataModule",
+    "DummyWeatherDataModule",
     "build_dummy_weather_graph",
-    "GraphBuilder",
-    "DummyGraphBuilder",
-    "WMGGraphBuilder",
-    "build_encode_process_decode_model",
+    "GraphProvider",
+    "DummyGraphProvider",
+    "WMGGraphProvider",
     "experiment_factory",
     "autoregressive_experiment_factory",
-    "make_mlp",
+    "TwoLayerMLP",
     "main",
 ]
