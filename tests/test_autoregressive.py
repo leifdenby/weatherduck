@@ -94,8 +94,8 @@ def experiment_factory() -> AutoregressiveExperiment:
     return AutoregressiveExperiment(model=ar_model, data=dm)
 
 
-def test_autoregressive_forecaster_runs_dummy_graph_builder():
-    """Run the autoregressive forecaster using the dummy graph builder.
+def test_autoregressive_forecaster_runs_dummy_graph_provider():
+    """Run the autoregressive forecaster using the dummy graph provider.
 
     Parameters
     ----------
@@ -110,8 +110,8 @@ def test_autoregressive_forecaster_runs_dummy_graph_builder():
     experiment.run()
 
 
-def test_autoregressive_forecaster_runs_wmg_graph_builder():
-    """Run the autoregressive forecaster using the WMG graph builder.
+def test_autoregressive_forecaster_runs_wmg_graph_provider():
+    """Run the autoregressive forecaster using the WMG graph provider.
 
     Parameters
     ----------
@@ -123,7 +123,9 @@ def test_autoregressive_forecaster_runs_wmg_graph_builder():
     """
     pytest.importorskip("weather_model_graphs")
     config = experiment_factory()
-    config.data.graph_builder = WMGGraphProvider(kind="keisler", mesh_node_distance=1.0)
+    config.data.graph_provider = WMGGraphProvider(
+        kind="keisler", mesh_node_distance=1.0
+    )
     experiment = fdl.build(config)
     experiment.run()
 
@@ -157,7 +159,7 @@ def test_autoregressive_forecaster_runs_neural_lam_datamodule():
     config = experiment_factory()
     config.data = MDPDataModule(
         config_path=str(config_path),
-        graph_builder=WMGGraphProvider(mesh_node_distance=10.0e3),
+        graph_provider=WMGGraphProvider(mesh_node_distance=10.0e3),
         ar_steps_train=2,
         ar_steps_eval=2,
         batch_size=2,

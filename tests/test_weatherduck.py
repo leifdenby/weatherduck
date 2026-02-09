@@ -22,7 +22,7 @@ def test_single_batch_forward():
         n_input_data_features=n_input_data_features,
         n_output_data_features=n_output_data_features,
         n_hidden_data_features=n_hidden_data_features,
-        graph_builder=DummyGraphProvider(),
+        graph_provider=DummyGraphProvider(),
         batch_size=2,
     )
     dm.setup("fit")
@@ -61,7 +61,7 @@ def test_trainable_params_match_unique_graphs():
         n_input_data_features=n_input_data_features,
         n_output_data_features=n_output_data_features,
         n_hidden_data_features=n_hidden_data_features,
-        graph_builder=DummyGraphProvider(),
+        graph_provider=DummyGraphProvider(),
         batch_size=2,
         n_unique_graphs=n_unique_graphs,
     )

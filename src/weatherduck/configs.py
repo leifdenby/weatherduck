@@ -9,7 +9,7 @@ from torch_geometric.nn import SAGEConv
 
 from .ar_forecaster import AutoRegressiveForecaster
 from .data.dummy import DummyTimeseriesWeatherDataModule, DummyWeatherDataModule
-from .graphs import DummyGraphProvider
+from .graphs import WMGGraphProvider
 from .lightning import WeatherDuckModule
 from .step_predictor import (
     EncodeProcessDecodeModel,
@@ -17,7 +17,7 @@ from .step_predictor import (
     SingleNodesetDecoder,
     SingleNodesetEncoder,
     TrainableFeatureManager,
-    make_mlp,
+    TwoLayerMLP,
 )
 
 __all__ = [
@@ -47,15 +47,17 @@ def build_encode_process_decode_model(
         n_input_trainable_features: Number of trainable input features per node.
         n_hidden_trainable_features: Number of hidden trainable features per node.
         hidden_dim: Hidden dimension used across encoder/processor/decoder.
+        embedder_src_factory: Callable that builds the source embedder given
+            (input_dim, hidden_dim).
 
     Returns:
         EncodeProcessDecodeModel configured with the requested dimensions.
     """
     encoder = SingleNodesetEncoder(
-        embedder_src=make_mlp(
+        embedder_src=TwoLayerMLP(
             n_input_data_features + n_input_trainable_features, hidden_dim, hidden_dim
         ),
-        embedder_dst=make_mlp(
+        embedder_dst=TwoLayerMLP(
             n_hidden_data_features + n_hidden_trainable_features, hidden_dim, hidden_dim
         ),
         message_op=SAGEConv((hidden_dim, hidden_dim), hidden_dim),
@@ -66,12 +68,12 @@ def build_encode_process_decode_model(
         hidden_dim=hidden_dim,
     )
     decoder = SingleNodesetDecoder(
-        embedder_src=make_mlp(
+        embedder_src=TwoLayerMLP(
             hidden_dim + n_hidden_data_features + n_hidden_trainable_features,
             hidden_dim,
             hidden_dim,
         ),
-        embedder_dst=make_mlp(
+        embedder_dst=TwoLayerMLP(
             n_input_data_features + n_input_trainable_features, hidden_dim, hidden_dim
         ),
         message_op=SAGEConv((hidden_dim, hidden_dim), hidden_dim),
@@ -150,7 +152,7 @@ def experiment_factory() -> Experiment:
         n_input_data_features=n_input_data_features,
         n_output_data_features=n_output_data_features,
         n_hidden_data_features=n_hidden_data_features,
-        graph_builder=DummyGraphProvider(),
+        graph_provider=WMGGraphProvider(mesh_node_distance=10.0),
         batch_size=4,
     )
 
@@ -212,7 +214,7 @@ def autoregressive_experiment_factory() -> Experiment:
         n_static_features=n_static_features,
         ar_steps=ar_steps,
         n_hidden_data_features=n_hidden_data_features,
-        graph_provider=DummyGraphProvider(),
+        graph_provider=WMGGraphProvider(mesh_node_distance=10.0),
         batch_size=4,
         n_unique_graphs=2,
     )
