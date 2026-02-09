@@ -12,7 +12,7 @@ Weatherduck was built to be a lightweight, hydra-free scaffold that mirrors [neu
   - See [example notebook](notebooks/fiddle.ipynb) using fiddle to visualize a weatherduck experiment
 - Keep model architecture components small and override-friendly (for example with drop-in custom MessagePassing classes).
 - Exercise end-to-end Lightning + PyG training with dummy graphs so you can iterate on model code and configs before real data/graphs are ready.
-  - support for loading data from anemoi and neural-lam datasets is planned but not yet implemented.
+  - neural-lam MDP datasets are supported via `MDPDataModule`; anemoi dataset support is still planned.
 - Clarify feature bookkeeping (n_*_features + trainable features) and graph expectations in one place.
 
 ## What’s inside
@@ -22,7 +22,7 @@ Weatherduck was built to be a lightweight, hydra-free scaffold that mirrors [neu
 - `src/weatherduck/graphs/`: graph provider interfaces and implementations (`GraphProvider`, `DummyGraphProvider`, `WMGGraphProvider`).
 - `src/weatherduck/data/base.py`: `BaseWeatherDataModule` shared datamodule base class that standardizes split handling and GeoDataLoader wiring for datasets that yield `HeteroData`.
 - `src/weatherduck/data/dummy.py`: dummy dataset implementations and `DummyWeatherDataModule`/`DummyTimeseriesWeatherDataModule` (built on the base class).
-- `src/weatherduck/data/neural_lam.py`: neural-lam-backed `MDPDataModule` and dataset adapter (currently non-hierarchical graphs only).
+- `src/weatherduck/data/neural_lam.py`: neural-lam-backed `MDPDataModule` and dataset adapter.
 - `src/weatherduck/configs.py`: Fiddle factories (`build_encode_process_decode_model`, `experiment_factory`, `autoregressive_experiment_factory`) and the `Experiment` dataclass.
 - `src/weatherduck/__init__.py`: Public exports.
 - `tests/test_weatherduck.py`: Smoke tests for single-step training.
@@ -87,7 +87,7 @@ Example:
 from weatherduck import DummyGraphProvider, DummyWeatherDataModule
 
 dm = DummyWeatherDataModule(
-    graph_builder=DummyGraphProvider(),
+    graph_provider=DummyGraphProvider(),
     num_samples=64,
     num_data_nodes=64,
     n_input_data_features=8,
