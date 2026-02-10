@@ -5,11 +5,17 @@ from typing import Literal
 import numpy as np
 import torch
 from torch_geometric.data import HeteroData
-from weather_model_graphs.create.archetype import (
-    create_graphcast_graph,
-    create_keisler_graph,
-    create_oskarsson_hierarchical_graph,
-)
+
+try:
+    from weather_model_graphs.create.archetype import (
+        create_graphcast_graph,
+        create_keisler_graph,
+        create_oskarsson_hierarchical_graph,
+    )
+except ModuleNotFoundError:  # pragma: no cover - optional dependency
+    create_graphcast_graph = None
+    create_keisler_graph = None
+    create_oskarsson_hierarchical_graph = None
 
 from .base import GraphProvider
 
@@ -143,6 +149,11 @@ class WMGGraphProvider(GraphProvider):
         networkx.DiGraph
             Constructed networkx graph.
         """
+        if create_graphcast_graph is None:
+            raise ModuleNotFoundError(
+                "weather-model-graphs is not installed. "
+                "Install with `pip install -e .[wmg]` or `uv sync --group wmg`."
+            )
 
         if self.kind == "keisler":
             return create_keisler_graph(

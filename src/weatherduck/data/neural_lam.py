@@ -4,8 +4,13 @@ from dataclasses import dataclass
 
 import numpy as np
 import torch
-from neural_lam.datastore.mdp import MDPDatastore
-from neural_lam.weather_dataset import WeatherDataset
+
+try:
+    from neural_lam.datastore.mdp import MDPDatastore
+    from neural_lam.weather_dataset import WeatherDataset
+except ModuleNotFoundError:  # pragma: no cover - optional dependency
+    MDPDatastore = None
+    WeatherDataset = None
 from torch.utils.data import Dataset
 from torch_geometric.data import Batch, HeteroData
 
@@ -32,6 +37,12 @@ class NeuralLamWeatherGraphDataset(Dataset):
         -------
         None
         """
+        if WeatherDataset is None:
+            raise ModuleNotFoundError(
+                "neural-lam is not installed. "
+                "Install with `pip install -e .[neural-lam]` "
+                "or `uv sync --group neural-lam`."
+            )
         self.dataset = dataset
         self.graph_provider = graph_provider
         coords = np.asarray(self.dataset.datastore.get_xy("state", stacked=True))
@@ -158,6 +169,12 @@ class MDPDataModule(BaseWeatherDataModule):
         -------
         None
         """
+        if MDPDatastore is None:
+            raise ModuleNotFoundError(
+                "neural-lam is not installed. "
+                "Install with `pip install -e .[neural-lam]` "
+                "or `uv sync --group neural-lam`."
+            )
         super().__init__(batch_size=self.batch_size, num_workers=self.num_workers)
         self._datastore = MDPDatastore(self.config_path)
 
