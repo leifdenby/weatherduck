@@ -39,6 +39,8 @@ class AutoRegressiveForecaster(nn.Module):
               - x_init_states: [N, d_state, 2] initial history
               - x_forcing: [N, d_forcing, T]
               - x_static: [N, d_static]
+            Must not contain `graph["data"].x`; it will be constructed from the
+            above fields at each rollout step.
             Edge structure must satisfy the step_predictor requirements.
 
         Returns
@@ -49,6 +51,9 @@ class AutoRegressiveForecaster(nn.Module):
         x_init = graph["data"].x_init_states  # [N, d_state, 2]
         x_forcing = graph["data"].x_forcing  # [N, d_forcing, T]
         x_static = graph["data"].x_static  # [N, d_static]
+        assert (
+            "x" not in graph["data"]
+        ), "graph['data'].x must not be set for autoregressive inputs."
 
         N, d_state, history_len = x_init.shape
         assert (

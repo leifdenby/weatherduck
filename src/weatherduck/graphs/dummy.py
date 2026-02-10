@@ -13,7 +13,6 @@ def build_dummy_weather_graph(
     data_coords: np.ndarray,
     num_hidden_nodes: int = 32,
     edge_attr_dim: int = 2,
-    n_hidden_node_features: int = 0,
 ) -> HeteroData:
     """Build a minimal heterogeneous graph with random connectivity.
 
@@ -26,47 +25,31 @@ def build_dummy_weather_graph(
         Number of hidden nodes to create.
     edge_attr_dim : int, optional
         Edge attribute dimension for all edge types.
-    n_hidden_node_features : int, optional
-        Hidden node feature dimension.
-
     Returns
     -------
     HeteroData
         Graph with node types ``data`` and ``hidden`` and three edge relations
         (``data→hidden``, ``hidden→hidden``, ``hidden→data``). Data node features
         are set from ``data_coords``. Hidden node features are sampled uniformly
-        within the per-dimension min/max range of data features for as many
-        dimensions as possible; any remaining hidden feature dimensions (if
-        ``n_hidden_node_features`` exceeds ``F_data``) are filled with standard
-        normal noise. Edge indices are generated with dense random fanout and
-        edge attributes are sampled from a standard normal distribution.
+        within the per-dimension min/max range of data features. Edge indices
+        are generated with dense random fanout and edge attributes are sampled
+        from a standard normal distribution.
     """
     graph = HeteroData()
     if data_coords.ndim != 2:
         raise ValueError("data_coords must be a 2D array.")
     num_data_nodes = data_coords.shape[0]
     graph["data"].x = torch.as_tensor(data_coords, dtype=torch.float32)
-    if n_hidden_node_features > 0:
-        data_min = torch.min(graph["data"].x, dim=0).values
-        data_max = torch.max(graph["data"].x, dim=0).values
-        if data_min.numel() == 0:
-            graph["hidden"].x = torch.randn(num_hidden_nodes, n_hidden_node_features)
-        else:
-            fill_dims = min(n_hidden_node_features, data_min.shape[0])
-            hidden_x = torch.empty(num_hidden_nodes, n_hidden_node_features)
-            if fill_dims > 0:
-                hidden_x[:, :fill_dims] = (
-                    torch.rand(num_hidden_nodes, fill_dims)
-                    * (data_max[:fill_dims] - data_min[:fill_dims])
-                    + data_min[:fill_dims]
-                )
-            if n_hidden_node_features > fill_dims:
-                hidden_x[:, fill_dims:] = torch.randn(
-                    num_hidden_nodes, n_hidden_node_features - fill_dims
-                )
-            graph["hidden"].x = hidden_x
-    else:
+    data_min = torch.min(graph["data"].x, dim=0).values
+    data_max = torch.max(graph["data"].x, dim=0).values
+    if data_min.numel() == 0:
         graph["hidden"].x = torch.zeros(num_hidden_nodes, 0)
+    else:
+        hidden_x = (
+            torch.rand(num_hidden_nodes, data_min.shape[0]) * (data_max - data_min)
+            + data_min
+        )
+        graph["hidden"].x = hidden_x
 
     def dense_edges(n_src: int, n_dst: int, fanout: int) -> torch.Tensor:
         """Generate random dense edge indices.
@@ -119,7 +102,6 @@ class DummyGraphProvider(GraphProvider):
         num_data_nodes: int | None = None,
         num_hidden_nodes: int | None = None,
         edge_attr_dim: int = 2,
-        n_hidden_node_features: int = 0,
         cache: str = "in_memory",
     ) -> None:
         """Initialize the dummy graph provider.
@@ -132,8 +114,6 @@ class DummyGraphProvider(GraphProvider):
             Number of hidden nodes; defaults to half of data nodes.
         edge_attr_dim : int, optional
             Edge attribute dimension.
-        n_hidden_node_features : int, optional
-            Hidden node feature dimension.
         cache : str, optional
             Cache mode identifier, by default "in_memory".
 
@@ -145,7 +125,6 @@ class DummyGraphProvider(GraphProvider):
         self.num_data_nodes = num_data_nodes
         self.num_hidden_nodes = num_hidden_nodes
         self.edge_attr_dim = edge_attr_dim
-        self.n_hidden_node_features = n_hidden_node_features
 
     def __call__(self, domain_id: str, coords: np.ndarray) -> HeteroData:
         """Build a dummy graph for given coords.
@@ -192,8 +171,47 @@ class DummyGraphProvider(GraphProvider):
             data_coords=coords,
             num_hidden_nodes=num_hidden_nodes,
             edge_attr_dim=self.edge_attr_dim,
-            n_hidden_node_features=self.n_hidden_node_features,
         )
         graph.graph_id_str = graph_id
         self.set_cached(graph_id, graph)
         return graph
+
+    def node_static_feature_dim(self, node_type: str) -> int:
+        """Return the static feature dimension for a node type.
+
+        Parameters
+        ----------
+        node_type : str
+            Node type name.
+
+        Returns
+        -------
+        int
+            Static feature dimension for the node type.
+        """
+        if node_type == "data":
+            return 2
+        if node_type == "hidden":
+            return 2
+        raise ValueError(f"Unsupported node type: {node_type}")
+
+    def edge_static_feature_dim(self, edge_type: tuple[str, str, str]) -> int:
+        """Return the static feature dimension for an edge type.
+
+        Parameters
+        ----------
+        edge_type : tuple[str, str, str]
+            Edge type tuple.
+
+        Returns
+        -------
+        int
+            Static feature dimension for the edge type.
+        """
+        if edge_type in {
+            ("data", "to", "hidden"),
+            ("hidden", "to", "hidden"),
+            ("hidden", "to", "data"),
+        }:
+            return self.edge_attr_dim
+        raise ValueError(f"Unsupported edge type: {edge_type}")

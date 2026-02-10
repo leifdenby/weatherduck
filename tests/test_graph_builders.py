@@ -22,10 +22,9 @@ def test_dummy_graph_provider_from_dataset():
         num_data_nodes=num_data_nodes,
         n_input_data_features=4,
         n_output_data_features=2,
-        n_hidden_data_features=0,
         graph_provider=DummyGraphProvider(),
     )
-    graph = ds.graphs[0]
+    graph = ds[0]
     assert graph["data"].num_nodes == num_data_nodes
     assert ("data", "to", "hidden") in graph.edge_types
     assert ("hidden", "to", "hidden") in graph.edge_types
@@ -52,10 +51,9 @@ def test_wmg_graph_provider_from_dataset():
         num_data_nodes=num_data_nodes,
         n_input_data_features=4,
         n_output_data_features=2,
-        n_hidden_data_features=0,
         graph_provider=WMGGraphProvider(mesh_node_distance=1.0),
     )
-    graph = ds.graphs[0]
+    graph = ds[0]
     assert graph["data"].num_nodes == num_data_nodes
     assert ("data", "to", "hidden") in graph.edge_types
     assert ("hidden", "to", "hidden") in graph.edge_types

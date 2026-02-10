@@ -63,28 +63,33 @@ def experiment_factory() -> AutoregressiveExperiment:
     ar_steps = 2
     n_state_features = 4
     n_output_features = 4
-    n_hidden_data_features = 2
+    n_hidden_data_features = 0
     n_input_trainable_features = 1
     n_hidden_trainable_features = 2
     hidden_dim = 32
 
+    graph_provider = DummyGraphProvider()
     dm = DummyTimeseriesWeatherDataModule(
-        graph_provider=DummyGraphProvider(),
+        graph_provider=graph_provider,
         num_samples=4,
         num_data_nodes=8,
         n_state_features=n_state_features,
         n_forcing_features=2,
         n_static_features=1,
         ar_steps=ar_steps,
-        n_hidden_data_features=n_hidden_data_features,
         batch_size=2,
         n_unique_graphs=2,
     )
 
+    n_static_hidden_features = graph_provider.node_static_feature_dim("hidden")
+    n_static_data_features = graph_provider.node_static_feature_dim("data")
     step_model = build_encode_process_decode_model(
-        n_input_data_features=n_state_features + 2 + 1,  # state + forcing + static
+        n_input_data_features=n_state_features
+        + 2
+        + 1
+        + n_static_data_features,  # state + forcing + static + graph static
         n_output_data_features=n_output_features,
-        n_hidden_data_features=n_hidden_data_features,
+        n_hidden_data_features=n_static_hidden_features + n_hidden_data_features,
         n_input_trainable_features=n_input_trainable_features,
         n_hidden_trainable_features=n_hidden_trainable_features,
         hidden_dim=hidden_dim,

@@ -31,14 +31,12 @@ def _populate_dummy_sample(
     num_data_nodes: int,
     n_input_data_features: int,
     n_output_data_features: int,
-    n_hidden_data_features: int,
 ) -> HeteroData:
     """Populate a graph by appending input/hidden features and adding targets.
 
     This appends ``n_input_data_features`` random input features to
-    ``graph["data"].x`` and ``n_hidden_data_features`` random hidden features to
-    ``graph["hidden"].x``. It also sets ``graph["data"].y`` to random targets
-    with ``n_output_data_features`` channels.
+    ``graph["data"].x``. It also sets ``graph["data"].y`` to random targets with
+    ``n_output_data_features`` channels. Hidden node features are left unchanged.
 
     Parameters
     ----------
@@ -57,15 +55,11 @@ def _populate_dummy_sample(
         Input feature dimension for data nodes.
     n_output_data_features : int
         Output feature dimension for targets.
-    n_hidden_data_features : int
-        Hidden node feature dimension.
-
     Returns
     -------
     HeteroData
         Graph with randomized node features and targets appended. This function:
         - Concatenates random data-node features to ``graph["data"].x``.
-        - Concatenates random hidden-node features to ``graph["hidden"].x``.
         - Sets ``graph["data"].y`` to random targets with shape
           ``[N_data, n_output_data_features]``.
     """
@@ -78,15 +72,67 @@ def _populate_dummy_sample(
     else:
         graph["data"].x = data_append
 
-    if n_hidden_data_features > 0:
-        hidden_append = torch.randn(graph["hidden"].num_nodes, n_hidden_data_features)
-    else:
-        hidden_append = torch.zeros(graph["hidden"].num_nodes, 0)
-    if "x" in graph["hidden"]:
-        graph["hidden"].x = torch.cat([graph["hidden"].x, hidden_append], dim=-1)
-    else:
-        graph["hidden"].x = hidden_append
     graph["data"].y = torch.randn(num_data_nodes, n_output_data_features)
+    return graph
+
+
+def _populate_dummy_timeseries_sample(
+    graph: HeteroData,
+    num_data_nodes: int,
+    n_state_features: int,
+    n_forcing_features: int,
+    n_static_features: int,
+    ar_steps: int,
+) -> HeteroData:
+    """Append random time-series features and targets to an existing graph.
+
+    Parameters
+    ----------
+    graph : HeteroData
+        Graph to augment. Expected structure:
+        - Node types: ``data`` and ``hidden``.
+        - ``graph["data"].x`` with shape ``[N_data, F_static]`` holding static
+          graph features (e.g. spatial coordinates); these are folded into
+          ``x_static`` below.
+        - ``graph["hidden"].x`` with shape ``[N_hidden, F_hidden]`` (may be present).
+        - Edge types:
+          - ``("data","to","hidden")`` with ``edge_index`` shape ``[2, E_dh]``.
+          - ``("hidden","to","hidden")`` with ``edge_index`` shape ``[2, E_hh]``.
+          - ``("hidden","to","data")`` with ``edge_index`` shape ``[2, E_hd]``.
+    num_data_nodes : int
+        Number of data nodes to populate.
+    n_state_features : int
+        State feature dimension.
+    n_forcing_features : int
+        Forcing feature dimension.
+    n_static_features : int
+        Number of additional static features to append beyond the static graph
+        features already present in ``graph["data"].x``.
+    ar_steps : int
+        Autoregressive rollout length.
+    Returns
+    -------
+    HeteroData
+        Graph with autoregressive fields populated. This function:
+        - Sets ``graph["data"].x_init_states`` to shape ``[N, d_state, 2]``.
+        - Sets ``graph["data"].x_forcing`` to shape ``[N, d_forcing, T]``.
+        - Sets ``graph["data"].x_static`` by concatenating ``graph["data"].x``
+          with ``n_static_features`` extra static features.
+        - Sets ``graph["data"].y`` to shape ``[N, d_state, T]``.
+        - Does not modify ``graph["hidden"].x`` (hidden features remain static).
+    """
+    graph["data"].x_init_states = torch.randn(num_data_nodes, n_state_features, 2)
+    graph["data"].x_forcing = torch.randn(num_data_nodes, n_forcing_features, ar_steps)
+    base_static = (
+        graph["data"].x if "x" in graph["data"] else torch.zeros(num_data_nodes, 0)
+    )
+    extra_static = torch.randn(num_data_nodes, n_static_features)
+    graph["data"].x_static = torch.cat([base_static, extra_static], dim=-1)
+    if "x" in graph["data"]:
+        del graph["data"].x
+    graph["data"].y = torch.randn(num_data_nodes, n_state_features, ar_steps)
+    graph["data"].num_nodes = num_data_nodes
+
     return graph
 
 
@@ -101,7 +147,6 @@ class DummyWeatherDataset(Dataset):
         num_data_nodes: int | dict[int, int],
         n_input_data_features: int,
         n_output_data_features: int,
-        n_hidden_data_features: int,
         graph_provider: GraphProvider,
         n_unique_graphs: int = 1,
     ):
@@ -117,8 +162,6 @@ class DummyWeatherDataset(Dataset):
             Input feature dimension.
         n_output_data_features : int
             Output feature dimension.
-        n_hidden_data_features : int
-            Hidden node feature dimension.
         graph_provider : GraphProvider
             Graph provider used to create topology.
         n_unique_graphs : int, optional
@@ -132,7 +175,6 @@ class DummyWeatherDataset(Dataset):
         self.num_data_nodes = num_data_nodes
         self.n_input_data_features = n_input_data_features
         self.n_output_data_features = n_output_data_features
-        self.n_hidden_data_features = n_hidden_data_features
         self.graph_provider = graph_provider
         self.n_unique_graphs = n_unique_graphs
         self._domain_coords: dict[int, np.ndarray] = {}
@@ -192,7 +234,6 @@ class DummyWeatherDataset(Dataset):
             num_data_nodes=num_data_nodes,
             n_input_data_features=self.n_input_data_features,
             n_output_data_features=self.n_output_data_features,
-            n_hidden_data_features=self.n_hidden_data_features,
         )
 
     def collate_fn(self, graphs: list[HeteroData]) -> Batch:
@@ -225,7 +266,6 @@ class TimeseriesDummyWeatherDataset(Dataset):
         n_forcing_features: int,
         n_static_features: int,
         ar_steps: int,
-        n_hidden_data_features: int,
         graph_provider: GraphProvider,
         n_unique_graphs: int = 1,
     ):
@@ -245,8 +285,6 @@ class TimeseriesDummyWeatherDataset(Dataset):
             Static feature dimension.
         ar_steps : int
             Autoregressive rollout length.
-        n_hidden_data_features : int
-            Hidden node feature dimension.
         graph_provider : GraphProvider
             Graph provider used to create topology.
         n_unique_graphs : int, optional
@@ -262,26 +300,23 @@ class TimeseriesDummyWeatherDataset(Dataset):
         self.n_forcing_features = n_forcing_features
         self.n_static_features = n_static_features
         self.ar_steps = ar_steps
-        self.n_hidden_data_features = n_hidden_data_features
         self.graph_provider = graph_provider
         self.n_unique_graphs = n_unique_graphs
-
-        self.graphs: list[HeteroData] = []
+        self._domain_coords: dict[int, np.ndarray] = {}
         for gid in range(n_unique_graphs):
-            num_nodes = (
-                num_data_nodes[gid]
-                if isinstance(num_data_nodes, dict)
-                else num_data_nodes
-            )
+            if isinstance(self.num_data_nodes, dict):
+                num_nodes = self.num_data_nodes.get(gid)
+                assert (
+                    num_nodes is not None
+                ), f"num_data_nodes missing entry for graph id {gid}"
+            else:
+                num_nodes = self.num_data_nodes
             coords = _make_grid_coords(num_nodes)
             if coords.shape[0] != num_nodes:
                 raise ValueError(
                     f"Generated coords has {coords.shape[0]} nodes but dataset expects {num_nodes}."
                 )
-            domain_id = f"dummy-timeseries-{gid}"
-            g = self.graph_provider(domain_id=domain_id, coords=coords)
-            g.graph_id = torch.tensor([gid], dtype=torch.long)
-            self.graphs.append(g)
+            self._domain_coords[gid] = coords
 
     def __len__(self) -> int:
         """Return dataset length.
@@ -304,32 +339,34 @@ class TimeseriesDummyWeatherDataset(Dataset):
         Returns
         -------
         HeteroData
-            Graph with autoregressive fields populated.
+            Graph with autoregressive fields populated:
+            - ``graph["data"].x_init_states`` with shape ``[N, d_state, 2]``.
+            - ``graph["data"].x_forcing`` with shape ``[N, d_forcing, T]``.
+            - ``graph["data"].x_static`` with shape ``[N, d_static]``.
+            - ``graph["data"].y`` with shape ``[N, d_state, T]``.
+            - ``graph["hidden"].x`` left unchanged.
         """
-        graph = self.graphs[idx % self.n_unique_graphs].clone()
-        gid = int(graph.graph_id.item())
+        gid = idx % self.n_unique_graphs
         num_nodes = (
             self.num_data_nodes[gid]
             if isinstance(self.num_data_nodes, dict)
             else self.num_data_nodes
         )
+        coords = self._domain_coords[gid]
+        domain_id = f"dummy-timeseries-{gid}"
+        graph = self.graph_provider(domain_id=domain_id, coords=coords)
+        graph.graph_id = torch.tensor([gid], dtype=torch.long)
 
-        graph["data"].x_init_states = torch.randn(num_nodes, self.n_state_features, 2)
-        graph["data"].x_forcing = torch.randn(
-            num_nodes, self.n_forcing_features, self.ar_steps
+        graph = _populate_dummy_timeseries_sample(
+            graph=graph,
+            num_data_nodes=num_nodes,
+            n_state_features=self.n_state_features,
+            n_forcing_features=self.n_forcing_features,
+            n_static_features=self.n_static_features,
+            ar_steps=self.ar_steps,
         )
-        graph["data"].x_static = torch.randn(num_nodes, self.n_static_features)
-        graph["data"].x = graph["data"].x_init_states[:, :, -1]
-        graph["data"].y = torch.randn(
-            num_nodes, self.n_state_features, self.ar_steps
-        )  # [N, d_state, T]
-
-        if self.n_hidden_data_features > 0:
-            graph["hidden"].x = torch.randn(
-                graph["hidden"].num_nodes, self.n_hidden_data_features
-            )
-        else:
-            graph["hidden"].x = torch.zeros(graph["hidden"].num_nodes, 0)
+        # Ensure autoregressive inputs don't carry a precomputed data.x
+        assert "x" not in graph["data"]
         return graph
 
     def collate_fn(self, graphs: list[HeteroData]) -> Batch:
@@ -360,7 +397,6 @@ class DummyWeatherDataModule(BaseWeatherDataModule):
         num_data_nodes: int | dict[int, int] = 64,
         n_input_data_features: int = 8,
         n_output_data_features: int = 8,
-        n_hidden_data_features: int = 0,
         batch_size: int = 4,
         n_unique_graphs: int = 1,
     ):
@@ -378,8 +414,6 @@ class DummyWeatherDataModule(BaseWeatherDataModule):
             Input feature dimension.
         n_output_data_features : int, optional
             Output feature dimension.
-        n_hidden_data_features : int, optional
-            Hidden node feature dimension.
         batch_size : int, optional
             Batch size.
         n_unique_graphs : int, optional
@@ -394,7 +428,6 @@ class DummyWeatherDataModule(BaseWeatherDataModule):
         self.num_data_nodes = num_data_nodes
         self.n_input_data_features = n_input_data_features
         self.n_output_data_features = n_output_data_features
-        self.n_hidden_data_features = n_hidden_data_features
         self.graph_provider = graph_provider
         self.n_unique_graphs = n_unique_graphs
 
@@ -419,7 +452,6 @@ class DummyWeatherDataModule(BaseWeatherDataModule):
             num_data_nodes=self.num_data_nodes,
             n_input_data_features=self.n_input_data_features,
             n_output_data_features=self.n_output_data_features,
-            n_hidden_data_features=self.n_hidden_data_features,
             graph_provider=self.graph_provider,
             n_unique_graphs=self.n_unique_graphs,
         )
@@ -439,7 +471,6 @@ class DummyTimeseriesWeatherDataModule(BaseWeatherDataModule):
         n_forcing_features: int = 2,
         n_static_features: int = 1,
         ar_steps: int = 3,
-        n_hidden_data_features: int = 0,
         batch_size: int = 4,
         n_unique_graphs: int = 1,
     ):
@@ -461,8 +492,6 @@ class DummyTimeseriesWeatherDataModule(BaseWeatherDataModule):
             Static feature dimension.
         ar_steps : int, optional
             Autoregressive rollout length.
-        n_hidden_data_features : int, optional
-            Hidden node feature dimension.
         batch_size : int, optional
             Batch size.
         n_unique_graphs : int, optional
@@ -479,7 +508,6 @@ class DummyTimeseriesWeatherDataModule(BaseWeatherDataModule):
         self.n_forcing_features = n_forcing_features
         self.n_static_features = n_static_features
         self.ar_steps = ar_steps
-        self.n_hidden_data_features = n_hidden_data_features
         self.graph_provider = graph_provider
         self.n_unique_graphs = n_unique_graphs
 
@@ -506,7 +534,6 @@ class DummyTimeseriesWeatherDataModule(BaseWeatherDataModule):
             n_forcing_features=self.n_forcing_features,
             n_static_features=self.n_static_features,
             ar_steps=self.ar_steps,
-            n_hidden_data_features=self.n_hidden_data_features,
             graph_provider=self.graph_provider,
             n_unique_graphs=self.n_unique_graphs,
         )
