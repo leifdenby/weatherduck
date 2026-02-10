@@ -26,6 +26,70 @@ def _make_grid_coords(num_nodes: int) -> np.ndarray:
     return coords[:num_nodes].astype(float)
 
 
+def _populate_dummy_sample(
+    graph: HeteroData,
+    num_data_nodes: int,
+    n_input_data_features: int,
+    n_output_data_features: int,
+    n_hidden_data_features: int,
+) -> HeteroData:
+    """Populate a graph by appending input/hidden features and adding targets.
+
+    This appends ``n_input_data_features`` random input features to
+    ``graph["data"].x`` and ``n_hidden_data_features`` random hidden features to
+    ``graph["hidden"].x``. It also sets ``graph["data"].y`` to random targets
+    with ``n_output_data_features`` channels.
+
+    Parameters
+    ----------
+    graph : HeteroData
+        Graph to augment. Expected structure:
+        - Node types: ``data`` and ``hidden``.
+        - ``graph["data"].x`` with shape ``[N_data, F_data]`` (will be appended).
+        - ``graph["hidden"].x`` with shape ``[N_hidden, F_hidden]`` (will be appended).
+        - Edge types:
+          - ``("data","to","hidden")`` with ``edge_index`` shape ``[2, E_dh]``.
+          - ``("hidden","to","hidden")`` with ``edge_index`` shape ``[2, E_hh]``.
+          - ``("hidden","to","data")`` with ``edge_index`` shape ``[2, E_hd]``.
+    num_data_nodes : int
+        Number of data nodes to populate.
+    n_input_data_features : int
+        Input feature dimension for data nodes.
+    n_output_data_features : int
+        Output feature dimension for targets.
+    n_hidden_data_features : int
+        Hidden node feature dimension.
+
+    Returns
+    -------
+    HeteroData
+        Graph with randomized node features and targets appended. This function:
+        - Concatenates random data-node features to ``graph["data"].x``.
+        - Concatenates random hidden-node features to ``graph["hidden"].x``.
+        - Sets ``graph["data"].y`` to random targets with shape
+          ``[N_data, n_output_data_features]``.
+    """
+    if n_input_data_features > 0:
+        data_append = torch.randn(num_data_nodes, n_input_data_features)
+    else:
+        data_append = torch.zeros(num_data_nodes, 0)
+    if "x" in graph["data"]:
+        graph["data"].x = torch.cat([graph["data"].x, data_append], dim=-1)
+    else:
+        graph["data"].x = data_append
+
+    if n_hidden_data_features > 0:
+        hidden_append = torch.randn(graph["hidden"].num_nodes, n_hidden_data_features)
+    else:
+        hidden_append = torch.zeros(graph["hidden"].num_nodes, 0)
+    if "x" in graph["hidden"]:
+        graph["hidden"].x = torch.cat([graph["hidden"].x, hidden_append], dim=-1)
+    else:
+        graph["hidden"].x = hidden_append
+    graph["data"].y = torch.randn(num_data_nodes, n_output_data_features)
+    return graph
+
+
 class DummyWeatherDataset(Dataset):
     """
     Dummy dataset producing random HeteroData samples for quick execution.
@@ -71,10 +135,13 @@ class DummyWeatherDataset(Dataset):
         self.n_hidden_data_features = n_hidden_data_features
         self.graph_provider = graph_provider
         self.n_unique_graphs = n_unique_graphs
-        self.graphs: list[HeteroData] = []
+        self._domain_coords: dict[int, np.ndarray] = {}
         for gid in range(n_unique_graphs):
             if isinstance(self.num_data_nodes, dict):
-                num_nodes = self.num_data_nodes[gid]
+                num_nodes = self.num_data_nodes.get(gid)
+                assert (
+                    num_nodes is not None
+                ), f"num_data_nodes missing entry for graph id {gid}"
             else:
                 num_nodes = self.num_data_nodes
             coords = _make_grid_coords(num_nodes)
@@ -82,10 +149,7 @@ class DummyWeatherDataset(Dataset):
                 raise ValueError(
                     f"Generated coords has {coords.shape[0]} nodes but dataset expects {num_nodes}."
                 )
-            domain_id = f"dummy-{gid}"
-            g = self.graph_provider(domain_id=domain_id, coords=coords)
-            g.graph_id = torch.tensor([gid], dtype=torch.long)
-            self.graphs.append(g)
+            self._domain_coords[gid] = coords
 
     def __len__(self) -> int:
         """Return dataset length.
@@ -110,9 +174,8 @@ class DummyWeatherDataset(Dataset):
         HeteroData
             Graph with populated data features/targets.
         """
-        graph = self.graphs[idx % self.n_unique_graphs].clone()
+        gid = idx % self.n_unique_graphs
         if isinstance(self.num_data_nodes, dict):
-            gid = int(graph.graph_id.item())
             num_data_nodes = self.num_data_nodes.get(gid)
             assert (
                 num_data_nodes is not None
@@ -120,15 +183,17 @@ class DummyWeatherDataset(Dataset):
         else:
             num_data_nodes = self.num_data_nodes
 
-        graph["data"].x = torch.randn(num_data_nodes, self.n_input_data_features)
-        if self.n_hidden_data_features > 0:
-            graph["hidden"].x = torch.randn(
-                graph["hidden"].num_nodes, self.n_hidden_data_features
-            )
-        else:
-            graph["hidden"].x = torch.zeros(graph["hidden"].num_nodes, 0)
-        graph["data"].y = torch.randn(num_data_nodes, self.n_output_data_features)
-        return graph
+        coords = self._domain_coords[gid]
+        domain_id = f"dummy-{gid}"
+        graph = self.graph_provider(domain_id=domain_id, coords=coords)
+        graph.graph_id = torch.tensor([gid], dtype=torch.long)
+        return _populate_dummy_sample(
+            graph=graph,
+            num_data_nodes=num_data_nodes,
+            n_input_data_features=self.n_input_data_features,
+            n_output_data_features=self.n_output_data_features,
+            n_hidden_data_features=self.n_hidden_data_features,
+        )
 
     def collate_fn(self, graphs: list[HeteroData]) -> Batch:
         """Collate graphs into a batched HeteroData.
