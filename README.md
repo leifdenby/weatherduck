@@ -29,11 +29,41 @@ Weatherduck was built to be a lightweight, hydra-free scaffold that mirrors [neu
 - `tests/test_autoregressive.py`: Smoke tests for autoregressive forecasting.
 - `main.py` (invoked by `uv run weatherduck`): builds the Fiddle experiment and runs a short training loop.
 
-## Quick start
+## Get started (local)
+Clone the repo and install dependencies with `uv` (recommended) or `pip -e .`:
+
 ```bash
+git clone <repo-url>
+cd weatherduck
+
+# Option 1: uv
+uv sync --dev --all-extras
 uv run weatherduck  # runs experiment_factory → Experiment.run()
+
+# Option 2: editable install with pip
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .[dev]
+weatherduck  # runs experiment_factory → Experiment.run()
 ```
-This uses dummy graphs/data and should execute end-to-end on CPU or MPS.
+
+Optional dependency groups are required for graph providers and datasets:
+- `wmg`: enables `WMGGraphProvider` ([weather-model-graphs](https://github.com/mllam/weather-model-graphs)).
+- `neural-lam`: enables `MDPDataModule` and neural-lam datasets ([neural-lam](https://github.com/mllam/neural-lam)).
+
+With `uv`:
+```bash
+uv sync --dev --all-extras --group wmg
+uv sync --dev --all-extras --group neural-lam
+```
+
+With `pip`:
+```bash
+pip install -e .[dev,wmg]
+pip install -e .[dev,neural-lam]
+```
+
+By default [`experiment_factory`](src/weatherduck/configs.py) uses dummy graphs/data and should execute end-to-end on CPU or MPS.
 
 
 ## Key dimensions (n_*)
