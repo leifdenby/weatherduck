@@ -141,7 +141,7 @@ def experiment_factory() -> Experiment:
         hidden_dim=hidden_dim,
     )
 
-    lit_module = WeatherDuckModule(
+    pl_module = WeatherDuckModule(
         model=core_model,
         lr=1e-3,
     )
@@ -163,7 +163,7 @@ def experiment_factory() -> Experiment:
     )
 
     return Experiment(
-        pl_module=lit_module,
+        pl_module=pl_module,
         data=data,
         trainer=trainer,
     )
