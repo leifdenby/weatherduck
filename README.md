@@ -23,7 +23,7 @@ Weatherduck was built to be a lightweight, hydra-free scaffold that mirrors [neu
 - `src/weatherduck/data/base.py`: `BaseWeatherDataModule` shared datamodule base class that standardizes split handling and GeoDataLoader wiring for datasets that yield `HeteroData`.
 - `src/weatherduck/data/dummy.py`: dummy dataset implementations and `DummyWeatherDataModule`/`DummyTimeseriesWeatherDataModule` (built on the base class).
 - `src/weatherduck/data/neural_lam.py`: neural-lam-backed `MDPDataModule` and dataset adapter.
-- `src/weatherduck/configs.py`: Fiddle factories (`build_encode_process_decode_model`, `experiment_factory`, `autoregressive_experiment_factory`) and the `Experiment` dataclass.
+- `src/weatherduck/configs.py`: Fiddle factories (`build_encode_process_decode_model`, `singlestep_experiment_factory`, `autoregressive_experiment_factory`) and the `Experiment` dataclass.
 - `src/weatherduck/__init__.py`: Public exports.
 - `tests/test_weatherduck.py`: Smoke tests for single-step training.
 - `tests/test_autoregressive.py`: Smoke tests for autoregressive forecasting.
@@ -38,13 +38,13 @@ cd weatherduck
 
 # Option 1: uv
 uv sync --dev --all-extras
-uv run weatherduck  # runs experiment_factory → Experiment.run()
+uv run weatherduck  # runs singlestep_experiment_factory → Experiment.run()
 
 # Option 2: editable install with pip
 python -m venv .venv
 source .venv/bin/activate
 pip install -e .[dev]
-weatherduck  # runs experiment_factory → Experiment.run()
+weatherduck  # runs singlestep_experiment_factory → Experiment.run()
 ```
 
 Optional dependency groups are required for graph providers and datasets:
@@ -63,7 +63,7 @@ pip install -e .[dev,wmg]
 pip install -e .[dev,neural-lam]
 ```
 
-By default [`experiment_factory`](src/weatherduck/configs.py) uses dummy graphs/data and should execute end-to-end on CPU or MPS.
+By default [`singlestep_experiment_factory`](src/weatherduck/configs.py) uses dummy graphs/data and should execute end-to-end on CPU or MPS.
 
 
 ## Key dimensions (n_*)

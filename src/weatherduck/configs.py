@@ -23,7 +23,7 @@ from .step_predictor import (
 __all__ = [
     "Experiment",
     "build_encode_process_decode_model",
-    "experiment_factory",
+    "singlestep_experiment_factory",
     "autoregressive_experiment_factory",
 ]
 
@@ -116,7 +116,7 @@ class Experiment:
 
 
 @fiddle.experimental.auto_config.auto_config
-def experiment_factory() -> Experiment:
+def singlestep_experiment_factory() -> Experiment:
     """
     Build a experiment object for a dummy single-step weather prediction task.
     This is decorated as a Fiddle auto_config function, so that one can create
@@ -186,10 +186,11 @@ def autoregressive_experiment_factory() -> Experiment:
 
     n_input_trainable_features = 2
     n_hidden_trainable_features = 2
+
     hidden_dim = 128
 
     graph_provider = DummyGraphProvider()
-    n_static_hidden_data_features = graph_provider.node_static_feature_dim("hidden")
+    n_hidden_static_graph_features = graph_provider.node_static_feature_dim("hidden")
     n_input_static_graph_features = graph_provider.node_static_feature_dim("data")
 
     step_model = build_encode_process_decode_model(
@@ -198,7 +199,7 @@ def autoregressive_experiment_factory() -> Experiment:
         + n_input_data_static_features
         + n_input_static_graph_features,  # data (state + forcing + static) + graph static
         n_output_data_features=n_output_data_features,
-        n_hidden_data_features=n_static_hidden_data_features,
+        n_hidden_data_features=n_hidden_static_graph_features,
         n_input_trainable_features=n_input_trainable_features,
         n_hidden_trainable_features=n_hidden_trainable_features,
         hidden_dim=hidden_dim,

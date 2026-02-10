@@ -52,7 +52,7 @@ class AutoregressiveExperiment:
 
 
 @fiddle.experimental.auto_config.auto_config
-def experiment_factory() -> AutoregressiveExperiment:
+def singlestep_experiment_factory() -> AutoregressiveExperiment:
     """Build a fiddle-configurable autoregressive experiment.
 
     Returns
@@ -110,7 +110,7 @@ def test_autoregressive_forecaster_runs_dummy_graph_provider():
     -------
     None
     """
-    config = experiment_factory()
+    config = singlestep_experiment_factory()
     experiment = fdl.build(config)
     experiment.run()
 
@@ -127,7 +127,7 @@ def test_autoregressive_forecaster_runs_wmg_graph_provider():
     None
     """
     pytest.importorskip("weather_model_graphs")
-    config = experiment_factory()
+    config = singlestep_experiment_factory()
     config.data.graph_provider = WMGGraphProvider(
         kind="keisler", mesh_node_distance=1.0
     )
@@ -161,7 +161,7 @@ def test_autoregressive_forecaster_runs_neural_lam_datamodule():
     if not config_path.exists():
         pytest.skip(f"Neural-lam config not found at {config_path}.")
 
-    config = experiment_factory()
+    config = singlestep_experiment_factory()
     config.data = MDPDataModule(
         config_path=str(config_path),
         graph_provider=WMGGraphProvider(mesh_node_distance=10.0e3),
