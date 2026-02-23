@@ -3,7 +3,7 @@ from .configs import (
     Experiment,
     autoregressive_experiment_factory,
     build_encode_process_decode_model,
-    experiment_factory,
+    singlestep_experiment_factory,
 )
 from .data import (
     BaseWeatherDataModule,
@@ -52,7 +52,7 @@ __all__ = [
     "GraphProvider",
     "DummyGraphProvider",
     "WMGGraphProvider",
-    "experiment_factory",
+    "singlestep_experiment_factory",
     "autoregressive_experiment_factory",
     "TwoLayerMLP",
     "main",

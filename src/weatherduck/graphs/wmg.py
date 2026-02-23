@@ -180,6 +180,46 @@ class WMGGraphProvider(GraphProvider):
             graph_crs=self.graph_crs,
         )
 
+    def node_static_feature_dim(self, node_type: str) -> int:
+        """Return the static feature dimension for a node type.
+
+        Parameters
+        ----------
+        node_type : str
+            Node type name.
+
+        Returns
+        -------
+        int
+            Static feature dimension for the node type.
+        """
+        if node_type == "data":
+            return 2
+        if node_type == "hidden":
+            return 2
+        raise ValueError(f"Unsupported node type: {node_type}")
+
+    def edge_static_feature_dim(self, edge_type: tuple[str, str, str]) -> int:
+        """Return the static feature dimension for an edge type.
+
+        Parameters
+        ----------
+        edge_type : tuple[str, str, str]
+            Edge type tuple.
+
+        Returns
+        -------
+        int
+            Static feature dimension for the edge type.
+        """
+        if edge_type in {
+            ("data", "to", "hidden"),
+            ("hidden", "to", "hidden"),
+            ("hidden", "to", "data"),
+        }:
+            return 3
+        raise ValueError(f"Unsupported edge type: {edge_type}")
+
 
 def _to_heterodata(nx_graph) -> HeteroData:
     """Convert a weather-model-graphs networkx graph to HeteroData.

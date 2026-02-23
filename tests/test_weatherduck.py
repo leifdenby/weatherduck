@@ -11,25 +11,26 @@ def test_single_batch_forward():
     """Run a single batch through the model and check output shape matches targets."""
     n_input_data_features = 8
     n_output_data_features = 8
-    n_hidden_data_features = 4
+    n_hidden_data_features = 2
     n_input_trainable_features = 2
     n_hidden_trainable_features = 3
     hidden_dim = 64
 
+    graph_provider = DummyGraphProvider()
     dm = DummyWeatherDataModule(
         num_samples=1,
         num_data_nodes=16,
         n_input_data_features=n_input_data_features,
         n_output_data_features=n_output_data_features,
-        n_hidden_data_features=n_hidden_data_features,
-        graph_provider=DummyGraphProvider(),
+        graph_provider=graph_provider,
         batch_size=2,
     )
     dm.setup("fit")
     batch = next(iter(dm.train_dataloader()))
 
+    n_static_data_features = graph_provider.node_static_feature_dim("data")
     model = build_encode_process_decode_model(
-        n_input_data_features=n_input_data_features,
+        n_input_data_features=n_input_data_features + n_static_data_features,
         n_output_data_features=n_output_data_features,
         n_hidden_data_features=n_hidden_data_features,
         n_input_trainable_features=n_input_trainable_features,
@@ -48,26 +49,27 @@ def test_trainable_params_match_unique_graphs():
     """Ensure per-graph trainable modules are created for each unique graph in the dataset."""
     n_input_data_features = 4
     n_output_data_features = 2
-    n_hidden_data_features = 1
+    n_hidden_data_features = 2
     n_input_trainable_features = 2
     n_hidden_trainable_features = 3
     hidden_dim = 16
     num_nodes_per_graph = {0: 6, 1: 8, 2: 10}
     n_unique_graphs = len(num_nodes_per_graph)
 
+    graph_provider = DummyGraphProvider()
     dm = DummyWeatherDataModule(
         num_samples=6,
         num_data_nodes=num_nodes_per_graph,
         n_input_data_features=n_input_data_features,
         n_output_data_features=n_output_data_features,
-        n_hidden_data_features=n_hidden_data_features,
-        graph_provider=DummyGraphProvider(),
+        graph_provider=graph_provider,
         batch_size=2,
         n_unique_graphs=n_unique_graphs,
     )
     dm.setup("fit")
+    n_static_data_features = graph_provider.node_static_feature_dim("data")
     model = build_encode_process_decode_model(
-        n_input_data_features=n_input_data_features,
+        n_input_data_features=n_input_data_features + n_static_data_features,
         n_output_data_features=n_output_data_features,
         n_hidden_data_features=n_hidden_data_features,
         n_input_trainable_features=n_input_trainable_features,

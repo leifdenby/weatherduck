@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from abc import ABC, abstractmethod
 
 import numpy as np
@@ -42,7 +43,10 @@ class GraphProvider(ABC):
         """
         if self.cache != "in_memory":
             return None
-        return self._cache.get(graph_id)
+        cached = self._cache.get(graph_id)
+        if cached is None:
+            return None
+        return copy.deepcopy(cached)
 
     def set_cached(self, graph_id: str, graph: HeteroData) -> None:
         """Store a graph in the cache.
@@ -60,7 +64,7 @@ class GraphProvider(ABC):
         """
         if self.cache != "in_memory":
             return
-        self._cache[graph_id] = graph
+        self._cache[graph_id] = copy.deepcopy(graph)
 
     @abstractmethod
     def __call__(self, domain_id: str, coords: np.ndarray) -> HeteroData:
@@ -98,5 +102,37 @@ class GraphProvider(ABC):
             - F_hidden: hidden node feature dimension (often 0 at graph construction).
             - E: number of edges for the given edge type.
             - D_edge: edge feature dimension (e.g., length and direction features).
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def node_static_feature_dim(self, node_type: str) -> int:
+        """Return the static feature dimension for a node type.
+
+        Parameters
+        ----------
+        node_type : str
+            Node type name (e.g., ``"data"`` or ``"hidden"``).
+
+        Returns
+        -------
+        int
+            Static feature dimension for the requested node type.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def edge_static_feature_dim(self, edge_type: tuple[str, str, str]) -> int:
+        """Return the static feature dimension for an edge type.
+
+        Parameters
+        ----------
+        edge_type : tuple[str, str, str]
+            Edge type tuple, e.g. ``("data","to","hidden")``.
+
+        Returns
+        -------
+        int
+            Static edge feature dimension for the requested edge type.
         """
         raise NotImplementedError

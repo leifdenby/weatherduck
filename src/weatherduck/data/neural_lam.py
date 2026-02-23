@@ -49,13 +49,6 @@ class NeuralLamWeatherGraphDataset(Dataset):
         if coords.ndim != 2 or coords.shape[1] != 2:
             raise ValueError("Expected coords with shape [N, 2] from datastore.get_xy.")
         self.coords = coords
-        domain_id = f"mdp:{self.dataset.datastore.root_path}"
-        self.graph = self.graph_provider(domain_id=domain_id, coords=self.coords)
-        if self.graph["data"].num_nodes != self.coords.shape[0]:
-            raise ValueError(
-                "Graph/data node count mismatch: "
-                f"{self.graph['data'].num_nodes} != {self.coords.shape[0]}."
-            )
 
     def __len__(self) -> int:
         """Return dataset length.
@@ -83,7 +76,6 @@ class NeuralLamWeatherGraphDataset(Dataset):
             ``graph["data"].x_init_states`` : ``[N_data, F_data, 2]``
             ``graph["data"].x_forcing`` : ``[N_data, F_forcing, T]``
             ``graph["data"].x_static`` : ``[N_data, F_static]``
-            ``graph["data"].x`` : ``[N_data, F_data]``
             ``graph["data"].y`` : ``[N_data, F_data, T]``
 
             All edges and hidden node attributes are inherited from the base
@@ -109,7 +101,13 @@ class NeuralLamWeatherGraphDataset(Dataset):
                 "forcing_features": sample[2],
                 "batch_times": sample[3],
             }
-        graph = self.graph.clone()
+        domain_id = f"mdp:{self.dataset.datastore.root_path}"
+        graph = self.graph_provider(domain_id=domain_id, coords=self.coords)
+        if graph["data"].num_nodes != self.coords.shape[0]:
+            raise ValueError(
+                "Graph/data node count mismatch: "
+                f"{graph['data'].num_nodes} != {self.coords.shape[0]}."
+            )
 
         init_states = sample["init_states"]  # [2, N, F]
         target_states = sample["target_states"]  # [T, N, F]
@@ -122,14 +120,17 @@ class NeuralLamWeatherGraphDataset(Dataset):
         num_nodes = init_states.shape[0]
         graph["data"].x_init_states = init_states
         graph["data"].x_forcing = forcing
-        graph["data"].x_static = torch.zeros(num_nodes, 0, device=init_states.device)
-        graph["data"].x = init_states[:, :, -1]
+        # take the original static features set by the graph-provider (if they
+        # exist) and concatenate with zeros to match the expected feature
+        # dimension
+        base_static = graph["data"].x
+        graph["data"].x_static = torch.cat(
+            [base_static, torch.zeros(num_nodes, 0, device=base_static.device)], dim=-1
+        )
+        if "x" in graph["data"]:
+            del graph["data"].x
+        graph["data"].num_nodes = num_nodes
         graph["data"].y = target_states
-        if graph["data"].num_nodes != num_nodes:
-            raise ValueError(
-                "Graph/data node count mismatch: "
-                f"{graph['data'].num_nodes} != {num_nodes}."
-            )
         return graph
 
     def collate_fn(self, graphs: list[HeteroData]) -> Batch:

@@ -554,7 +554,20 @@ class EncodeProcessDecodeModel(nn.Module):
         Parameters
         ----------
         graph : HeteroData
-            Input graph with required node/edge types.
+            Input graph with required node/edge types and attributes:
+            - Node types:
+              - ``data`` with ``graph["data"].x`` shaped
+                ``[N_data, n_input_data_features]``.
+              - ``hidden`` with ``graph["hidden"].x`` shaped
+                ``[N_hidden, n_hidden_data_features]``.
+            - Edge types (edge_index required for each):
+              - ``("data","to","hidden")`` with ``edge_index`` ``[2, E_dh]`` and
+                optional ``edge_attr`` ``[E_dh, D_dh]``.
+              - ``("hidden","to","hidden")`` with ``edge_index`` ``[2, E_hh]`` and
+                optional ``edge_attr`` ``[E_hh, D_hh]``.
+              - ``("hidden","to","data")`` with ``edge_index`` ``[2, E_hd]`` and
+                optional ``edge_attr`` ``[E_hd, D_hd]``.
+            Trainable features (if enabled) are appended internally per graph.
 
         Returns
         -------

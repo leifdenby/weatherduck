@@ -23,7 +23,7 @@ from .step_predictor import (
 __all__ = [
     "Experiment",
     "build_encode_process_decode_model",
-    "experiment_factory",
+    "singlestep_experiment_factory",
     "autoregressive_experiment_factory",
 ]
 
@@ -116,7 +116,7 @@ class Experiment:
 
 
 @fiddle.experimental.auto_config.auto_config
-def experiment_factory() -> Experiment:
+def singlestep_experiment_factory() -> Experiment:
     """
     Build a experiment object for a dummy single-step weather prediction task.
     This is decorated as a Fiddle auto_config function, so that one can create
@@ -129,13 +129,16 @@ def experiment_factory() -> Experiment:
     n_input_data_features = 8
     n_output_data_features = 8
     hidden_dim = 128
-    n_hidden_data_features = 4
+    n_hidden_data_features = 0
     n_input_trainable_features = 2
     n_hidden_trainable_features = 3
+    graph_provider = DummyGraphProvider()
+    n_static_data_features = graph_provider.node_static_feature_dim("data")
+    n_static_hidden_features = graph_provider.node_static_feature_dim("hidden")
     core_model = build_encode_process_decode_model(
-        n_input_data_features=n_input_data_features,
+        n_input_data_features=n_static_data_features + n_input_data_features,
         n_output_data_features=n_output_data_features,
-        n_hidden_data_features=n_hidden_data_features,
+        n_hidden_data_features=n_static_hidden_features + n_hidden_data_features,
         n_input_trainable_features=n_input_trainable_features,
         n_hidden_trainable_features=n_hidden_trainable_features,
         hidden_dim=hidden_dim,
@@ -151,8 +154,7 @@ def experiment_factory() -> Experiment:
         num_data_nodes=64,
         n_input_data_features=n_input_data_features,
         n_output_data_features=n_output_data_features,
-        n_hidden_data_features=n_hidden_data_features,
-        graph_provider=DummyGraphProvider(),
+        graph_provider=graph_provider,
         batch_size=4,
     )
 
@@ -177,21 +179,27 @@ def autoregressive_experiment_factory() -> Experiment:
         Experiment containing the autoregressive model, data, and trainer config.
     """
     ar_steps = 3
-    n_state_features = 6
+    n_input_data_state_features = 6
+    n_input_data_forcing_features = 2
+    n_input_data_static_features = 1
     n_output_data_features = 6
-    n_hidden_data_features = 3
+
     n_input_trainable_features = 2
     n_hidden_trainable_features = 2
-    n_forcing_features = 2
-    n_static_features = 1
+
     hidden_dim = 128
 
+    graph_provider = DummyGraphProvider()
+    n_hidden_static_graph_features = graph_provider.node_static_feature_dim("hidden")
+    n_input_static_graph_features = graph_provider.node_static_feature_dim("data")
+
     step_model = build_encode_process_decode_model(
-        n_input_data_features=n_state_features
-        + n_forcing_features
-        + n_static_features,  # state + forcing + static
+        n_input_data_features=n_input_data_state_features
+        + n_input_data_forcing_features
+        + n_input_data_static_features
+        + n_input_static_graph_features,  # data (state + forcing + static) + graph static
         n_output_data_features=n_output_data_features,
-        n_hidden_data_features=n_hidden_data_features,
+        n_hidden_data_features=n_hidden_static_graph_features,
         n_input_trainable_features=n_input_trainable_features,
         n_hidden_trainable_features=n_hidden_trainable_features,
         hidden_dim=hidden_dim,
@@ -209,12 +217,11 @@ def autoregressive_experiment_factory() -> Experiment:
     data = DummyTimeseriesWeatherDataModule(
         num_samples=256,
         num_data_nodes=64,
-        n_state_features=n_state_features,
-        n_forcing_features=n_forcing_features,
-        n_static_features=n_static_features,
+        n_state_features=n_input_data_state_features,
+        n_forcing_features=n_input_data_forcing_features,
+        n_static_features=n_input_data_static_features,
         ar_steps=ar_steps,
-        n_hidden_data_features=n_hidden_data_features,
-        graph_provider=DummyGraphProvider(),
+        graph_provider=graph_provider,
         batch_size=4,
         n_unique_graphs=2,
     )
