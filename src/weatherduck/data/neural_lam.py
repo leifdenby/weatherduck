@@ -120,6 +120,9 @@ class NeuralLamWeatherGraphDataset(Dataset):
         num_nodes = init_states.shape[0]
         graph["data"].x_init_states = init_states
         graph["data"].x_forcing = forcing
+        # take the original static features set by the graph-provider (if they
+        # exist) and concatenate with zeros to match the expected feature
+        # dimension
         base_static = graph["data"].x
         graph["data"].x_static = torch.cat(
             [base_static, torch.zeros(num_nodes, 0, device=base_static.device)], dim=-1
